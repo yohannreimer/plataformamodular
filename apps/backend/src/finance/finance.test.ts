@@ -421,6 +421,36 @@ test('initDb cria organization foundation e vincula auth interna ao org default'
   }
 });
 
+test('Financeiro fails closed when authenticated user has no organization', async () => {
+  const dbPath = assignTestDbPath('finance-missing-organization');
+  cleanupDbFiles(dbPath);
+  const app = createApp({ forceDbRefresh: true, enforceInternalAuth: true, enforceAccountProductAccess: false });
+
+  createInternalUser({
+    username: 'no-org@example.com',
+    display_name: 'No Org',
+    password: 'secret',
+    role: 'supremo',
+    permissions: ['finance.read'],
+    organization_id: null
+  });
+
+  db.prepare('update internal_user set organization_id = null where username = ?').run('no-org@example.com');
+
+  const loginRes = await request(app)
+    .post('/auth/login')
+    .send({ username: 'no-org@example.com', password: 'secret' });
+
+  const res = await request(app)
+    .get('/finance/overview')
+    .set('Authorization', `Bearer ${loginRes.body.token}`);
+
+  assert.equal(res.status, 403);
+  assert.equal(res.body.reason, 'missing_tenant');
+
+  cleanupDbFiles(dbPath);
+});
+
 test('initDb cria schema financeiro v1', () => {
   const dbPath = assignTestDbPath('finance-schema-v1');
   cleanupDbFiles(dbPath);

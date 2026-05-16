@@ -578,7 +578,13 @@ function readFinanceOrganizationId(res: Response) {
   if (!context) {
     throw new Error('Token de autenticação obrigatório.');
   }
-  return context.organization_id ?? 'org-holand';
+  if (!context.organization_id) {
+    throw Object.assign(new Error('Tenant obrigatório para acessar o Financeiro.'), {
+      statusCode: 403,
+      reason: 'missing_tenant'
+    });
+  }
+  return context.organization_id;
 }
 
 function resolveFinancialEntityId(payload: {
@@ -677,8 +683,14 @@ function readTransactionLedgerFilters(req: Request) {
 
 function respondFinanceError(res: Response, error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
-  const status = message.includes('não encontrado') ? 404 : 400;
-  return res.status(status).json({ message });
+  const details = error && typeof error === 'object' ? error as { statusCode?: unknown; reason?: unknown } : {};
+  const status = typeof details.statusCode === 'number'
+    ? details.statusCode
+    : message.includes('não encontrado') ? 404 : 400;
+  return res.status(status).json({
+    message,
+    ...(typeof details.reason === 'string' ? { reason: details.reason } : {})
+  });
 }
 
 export function registerFinanceRoutes(app: Express) {
