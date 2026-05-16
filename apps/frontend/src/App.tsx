@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
@@ -274,6 +274,7 @@ function InternalApp() {
   const [accountAccess, setAccountAccess] = useState<AccountAccessState | null>(() => accountAccessStore.read());
   const [loadingSession, setLoadingSession] = useState(true);
   const [bootstrapError, setBootstrapError] = useState('');
+  const bootstrappedClerkUserIdRef = useRef<string | null>(null);
   const [kanbanAlertCounts, setKanbanAlertCounts] = useState<KanbanAlertCounts>({
     implementation: 0,
     support: 0
@@ -341,6 +342,7 @@ function InternalApp() {
   useEffect(() => {
     if (!clerkLoaded) return;
     if (!isSignedIn) {
+      bootstrappedClerkUserIdRef.current = null;
       internalSessionStore.clear();
       accountAccessStore.clear();
       setSession(null);
@@ -350,10 +352,16 @@ function InternalApp() {
       return;
     }
 
-    if (session || !clerkUser) {
+    if (!clerkUser) {
       return;
     }
 
+    if (bootstrappedClerkUserIdRef.current === clerkUser.id) {
+      setLoadingSession(false);
+      return;
+    }
+
+    bootstrappedClerkUserIdRef.current = clerkUser.id;
     let cancelled = false;
     setLoadingSession(true);
     setBootstrapError('');
@@ -380,6 +388,7 @@ function InternalApp() {
       })
       .catch((error) => {
         if (cancelled) return;
+        bootstrappedClerkUserIdRef.current = null;
         internalSessionStore.clear();
         accountAccessStore.clear();
         setSession(null);
@@ -393,7 +402,7 @@ function InternalApp() {
     return () => {
       cancelled = true;
     };
-  }, [clerkLoaded, isSignedIn, clerkUser, getToken, session, location.pathname, navigate]);
+  }, [clerkLoaded, isSignedIn, clerkUser, getToken, location.pathname, navigate]);
 
   function handleLogout() {
     api.internalLogout().catch(() => null).finally(() => {

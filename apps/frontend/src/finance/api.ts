@@ -1,4 +1,5 @@
 import { internalSessionStore } from '../auth/session';
+import { readClerkToken } from '../auth/clerkToken';
 
 const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
 const BASE_URL = env?.VITE_API_BASE_URL ?? `http://${window.location.hostname}:4000`;
@@ -1287,6 +1288,10 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (authToken && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${authToken}`);
+  }
+  const clerkToken = await readClerkToken();
+  if (clerkToken && !headers.has('X-Clerk-Token')) {
+    headers.set('X-Clerk-Token', clerkToken);
   }
 
   const controller = new AbortController();
