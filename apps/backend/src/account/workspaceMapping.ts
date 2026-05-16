@@ -36,7 +36,7 @@ function uniqueOrganizationFields(input: AccountWorkspaceInput): UniqueOrganizat
   const name = `${baseName} (${suffix})`;
   return {
     name,
-    slug: `${slugify(baseName)}-${slugify(input.accountWorkspaceId)}`
+    slug: `${slugify(baseName)}-${suffix}`
   };
 }
 

@@ -63,3 +63,24 @@ test('findOrCreateOrganizationForAccountWorkspace handles duplicate workspace di
 
   cleanupDbFiles(dbPath);
 });
+
+test('findOrCreateOrganizationForAccountWorkspace avoids slug collisions for similar workspace ids', () => {
+  const dbPath = assignTestDbPath('account-workspace-org-similar-ids');
+  cleanupDbFiles(dbPath);
+  resetDbConnection();
+  initDb();
+
+  const first = findOrCreateOrganizationForAccountWorkspace({
+    accountWorkspaceId: 'workspace-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-1',
+    workspaceName: 'Acme Ltda'
+  });
+  const second = findOrCreateOrganizationForAccountWorkspace({
+    accountWorkspaceId: 'workspace-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-2',
+    workspaceName: 'Acme Ltda'
+  });
+
+  assert.notEqual(second.id, first.id);
+  assert.notEqual(first.slug, second.slug);
+
+  cleanupDbFiles(dbPath);
+});
