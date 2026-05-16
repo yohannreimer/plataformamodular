@@ -1003,6 +1003,7 @@ export function createInternalUser(payload: {
   role: InternalRole;
   permissions?: unknown;
   preferences?: unknown;
+  organization_id?: string | null;
   is_active?: boolean;
 }): InternalUserDto {
   const username = payload.username.trim();
@@ -1027,7 +1028,7 @@ export function createInternalUser(payload: {
     role,
     JSON.stringify(permissions),
     JSON.stringify(normalizeInternalUserPreferences(payload.preferences)),
-    'org-holand',
+    payload.organization_id ?? 'org-holand',
     payload.is_active === false ? 0 : 1,
     nowIso,
     nowIso
@@ -1038,6 +1039,15 @@ export function createInternalUser(payload: {
     throw new Error('Não foi possível criar usuário interno.');
   }
   return rowToDto(inserted);
+}
+
+export function updateInternalUserOrganization(userId: string, organizationId: string) {
+  const nowIso = new Date().toISOString();
+  db.prepare(`
+    update internal_user
+    set organization_id = ?, updated_at = ?
+    where id = ?
+  `).run(organizationId, nowIso, userId);
 }
 
 export function updateInternalUser(

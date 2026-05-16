@@ -1425,6 +1425,7 @@ export function initDb() {
   ensureColumn('portal_client', 'module_date_overrides_json', "module_date_overrides_json text not null default '{}'");
   ensureColumn('portal_client', 'module_status_overrides_json', "module_status_overrides_json text not null default '{}'");
   ensureColumn('portal_client', 'module_delivery_mode_overrides_json', "module_delivery_mode_overrides_json text not null default '{}'");
+  ensureColumn('organization', 'account_workspace_id', 'account_workspace_id text');
   ensureColumn('financial_transaction', 'is_deleted', 'is_deleted integer not null default 0');
   ensureColumn(
     'financial_account',
@@ -2276,6 +2277,9 @@ export function initDb() {
     create index if not exists idx_internal_session_user on internal_session(internal_user_id);
     create index if not exists idx_internal_session_expires on internal_session(expires_at);
     create index if not exists idx_internal_audit_created on internal_audit_log(created_at desc);
+    create unique index if not exists idx_organization_account_workspace_id
+      on organization(account_workspace_id)
+      where account_workspace_id is not null;
     create index if not exists idx_financial_account_org_active on financial_account(organization_id, is_active);
     create index if not exists idx_financial_category_org_parent on financial_category(organization_id, parent_category_id);
     create index if not exists idx_financial_transaction_org_status_due on financial_transaction(organization_id, status, due_date);

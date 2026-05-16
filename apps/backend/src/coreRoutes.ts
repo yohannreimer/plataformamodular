@@ -35,10 +35,12 @@ import {
   requireInternalAuth,
   type InternalPermissionKey,
   type InternalRole,
-  updateInternalUser
+  updateInternalUser,
+  updateInternalUserOrganization
 } from './internalAuth.js';
 import { readAccountProducts, syncAccountCustomer } from './account/client.js';
 import { extractClerkToken, requireAccountProductAccess } from './account/productAccess.js';
+import { findOrCreateOrganizationForAccountWorkspace } from './account/workspaceMapping.js';
 
 const INSTALLATION_CODES = ['960001010', 'MOD-01'] as const;
 const DEFAULT_WORKBOOK_PATH = '/Users/yohannreimer/Downloads/Planejamento_Jornada_Treinamentos_v3.xlsx';
@@ -3160,6 +3162,19 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
       });
 
       const accountProducts = await readAccountProducts(clerkToken);
+      const accountWorkspace = accountProducts.workspace;
+      if (!accountWorkspace) {
+        return res.status(403).json({
+          message: 'Workspace da Prymeira Account não encontrado.',
+          reason: 'no_account_workspace'
+        });
+      }
+
+      const organization = findOrCreateOrganizationForAccountWorkspace({
+        accountWorkspaceId: accountWorkspace.id,
+        workspaceName: accountWorkspace.name,
+        workspaceType: accountWorkspace.type
+      });
       let internalUser = readInternalUserByUsernameForAuth(email);
 
       if (!internalUser) {
@@ -3178,11 +3193,15 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
           role: 'supremo',
           permissions: INTERNAL_PERMISSION_KEYS,
           preferences: { calendar_vivid_mode: false },
+          organization_id: organization.id,
           is_active: true
         });
+      } else if (internalUser.organization_id !== organization.id) {
+        updateInternalUserOrganization(internalUser.id, organization.id);
+        internalUser = readInternalUserByUsernameForAuth(email);
       }
 
-      if (!internalUser.is_active) {
+      if (!internalUser || !internalUser.is_active) {
         return res.status(403).json({
           message: 'Usuário interno bloqueado.',
           reason: 'internal_user_blocked'
