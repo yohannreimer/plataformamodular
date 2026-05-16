@@ -4,6 +4,7 @@ import {
   type InternalRole,
   type InternalSessionUser
 } from '../auth/session';
+import type { AccountProductKey } from '../auth/accountAccess';
 import type { LucideIcon } from 'lucide-react';
 import { CalendarCheck, TrendingUp } from 'lucide-react';
 
@@ -11,6 +12,7 @@ export type PlatformModuleId = 'technical' | 'finance';
 
 export type PlatformModule = {
   id: PlatformModuleId;
+  productKey: AccountProductKey;
   slug: string;
   name: string;
   eyebrow: string;
@@ -55,6 +57,7 @@ export const FINANCE_PERMISSIONS: InternalPermission[] = [
 export const PLATFORM_MODULES: PlatformModule[] = [
   {
     id: 'technical',
+    productKey: 'orquestrador',
     slug: 'tecnico',
     name: 'Gestão Técnica',
     eyebrow: 'Operação',
@@ -68,6 +71,7 @@ export const PLATFORM_MODULES: PlatformModule[] = [
   },
   {
     id: 'finance',
+    productKey: 'financeiro',
     slug: 'financeiro',
     name: 'Financeiro',
     eyebrow: 'ERP',

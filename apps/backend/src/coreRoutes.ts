@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import express, { type Express, type Request } from 'express';
 import puppeteer from 'puppeteer-core';
 import { z } from 'zod';
@@ -23,6 +23,7 @@ import {
   attachInternalAuthIfPresent,
   createInternalAuditLog,
   createInternalSessionForCredentials,
+  createInternalSessionForUserId,
   createInternalUser,
   extractInternalBearerToken,
   hasAnyInternalPermission,
@@ -30,11 +31,14 @@ import {
   listInternalUsers,
   logoutInternalSessionByToken,
   readInternalAuthContext,
+  readInternalUserByUsernameForAuth,
   requireInternalAuth,
   type InternalPermissionKey,
   type InternalRole,
   updateInternalUser
 } from './internalAuth.js';
+import { readAccountProducts, syncAccountCustomer } from './account/client.js';
+import { extractClerkToken, requireAccountProductAccess } from './account/productAccess.js';
 
 const INSTALLATION_CODES = ['960001010', 'MOD-01'] as const;
 const DEFAULT_WORKBOOK_PATH = '/Users/yohannreimer/Downloads/Planejamento_Jornada_Treinamentos_v3.xlsx';
@@ -105,6 +109,7 @@ const INTERNAL_AUDIT_IGNORED_PATH_PATTERNS = [
 
 type RegisterCoreRoutesOptions = {
   enforceInternalAuth?: boolean;
+  enforceAccountProductAccess?: boolean;
 };
 
 const kanbanCardImageSchema = z
@@ -378,6 +383,12 @@ const internalPermissionSchema = z.enum(INTERNAL_PERMISSION_KEYS);
 const internalAuthLoginSchema = z.object({
   username: z.string().trim().min(1).max(120),
   password: z.string().trim().min(1).max(200)
+});
+
+const accountBootstrapSchema = z.object({
+  clerk_user_id: z.string().trim().min(1).max(200),
+  email: z.string().trim().email().max(320),
+  name: z.string().trim().max(180).optional()
 });
 
 const internalUserCreateSchema = z.object({
@@ -2994,6 +3005,31 @@ function isPublicOrPortalPath(pathname: string): boolean {
   return false;
 }
 
+function readBootstrapAdminEmails(): Set<string> {
+  return new Set(
+    (process.env.PRYMEIRA_BOOTSTRAP_ADMIN_EMAILS ?? '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function toInternalSessionResponse(session: NonNullable<ReturnType<typeof createInternalSessionForUserId>>) {
+  return {
+    token: session.token,
+    expires_at: session.expires_at,
+    user: {
+      id: session.user.internal_user_id,
+      username: session.user.username,
+      display_name: session.user.display_name,
+      role: session.user.role,
+      permissions: session.user.permissions,
+      organization_id: session.user.organization_id,
+      preferences: session.user.preferences
+    }
+  };
+}
+
 function sanitizeAuditData(input: unknown, depth = 0): unknown {
   if (depth > 4) return '[depth-limited]';
   if (input === null || typeof input === 'undefined') return input;
@@ -3046,7 +3082,7 @@ function inferAuditResourceId(pathname: string): string | null {
 }
 
 export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOptions = {}) {
-  const { enforceInternalAuth = false } = options;
+  const { enforceInternalAuth = false, enforceAccountProductAccess = false } = options;
   try {
     syncCalendarActivityStatuses();
     syncCohortLifecycleStatuses();
@@ -3102,6 +3138,77 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
     });
   });
 
+  app.post('/auth/account/bootstrap', async (req, res) => {
+    const clerkToken = extractClerkToken(req);
+    if (!clerkToken) {
+      return res.status(401).json({ message: 'Token Clerk obrigatório.' });
+    }
+
+    const parsed = accountBootstrapSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json(parsed.error.flatten());
+    }
+
+    const email = parsed.data.email.trim().toLowerCase();
+    const displayName = parsed.data.name?.trim() || email;
+
+    try {
+      await syncAccountCustomer(clerkToken, {
+        clerk_user_id: parsed.data.clerk_user_id,
+        email,
+        name: displayName
+      });
+
+      const accountProducts = await readAccountProducts(clerkToken);
+      let internalUser = readInternalUserByUsernameForAuth(email);
+
+      if (!internalUser) {
+        const bootstrapAdminEmails = readBootstrapAdminEmails();
+        if (!bootstrapAdminEmails.has(email)) {
+          return res.status(403).json({
+            message: 'Usuário ainda não foi provisionado na Plataforma Modular.',
+            reason: 'no_internal_user'
+          });
+        }
+
+        internalUser = createInternalUser({
+          username: email,
+          display_name: displayName,
+          password: randomBytes(32).toString('base64url'),
+          role: 'supremo',
+          permissions: INTERNAL_PERMISSION_KEYS,
+          preferences: { calendar_vivid_mode: false },
+          is_active: true
+        });
+      }
+
+      if (!internalUser.is_active) {
+        return res.status(403).json({
+          message: 'Usuário interno bloqueado.',
+          reason: 'internal_user_blocked'
+        });
+      }
+
+      const session = createInternalSessionForUserId(internalUser.id);
+      if (!session) {
+        return res.status(403).json({
+          message: 'Não foi possível criar sessão interna.',
+          reason: 'internal_session_failed'
+        });
+      }
+
+      return res.json({
+        session: toInternalSessionResponse(session),
+        account: accountProducts
+      });
+    } catch (error) {
+      return res.status(502).json({
+        message: 'Não foi possível sincronizar com a Prymeira Account.',
+        detail: errorMessage(error)
+      });
+    }
+  });
+
   app.get('/auth/me', requireInternalAuth, (_req, res) => {
     const context = readInternalAuthContext(res);
     if (!context) {
@@ -3127,6 +3234,10 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
     }
     return res.json({ ok: true });
   });
+
+  if (enforceAccountProductAccess) {
+    app.use(requireAccountProductAccess);
+  }
 
   app.use((req, res, next) => {
     if (isPublicOrPortalPath(req.path)) {

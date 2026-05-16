@@ -8,6 +8,8 @@ import type {
   PlanningWorkspaceDetail
 } from '../types';
 import { internalSessionStore, type InternalPermission, type InternalRole, type InternalSessionUser } from '../auth/session';
+import { readClerkToken } from '../auth/clerkToken';
+import type { AccountAccessState } from '../auth/accountAccess';
 
 const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
 const BASE_URL = env?.VITE_API_BASE_URL ?? `http://${window.location.hostname}:4000`;
@@ -71,10 +73,21 @@ export function createInternalAuthHeaders(init?: HeadersInit): Headers {
   return headers;
 }
 
+async function createApiHeaders(init?: HeadersInit): Promise<Headers> {
+  const headers = createInternalAuthHeaders(init);
+  const clerkToken = await readClerkToken();
+
+  if (clerkToken && !headers.has('X-Clerk-Token')) {
+    headers.set('X-Clerk-Token', clerkToken);
+  }
+
+  return headers;
+}
+
 async function req<T = any>(path: string, init?: RequestInit): Promise<T> {
   const currentSession = internalSessionStore.read();
   const authToken = currentSession?.token ?? null;
-  const headers = createInternalAuthHeaders(init?.headers);
+  const headers = await createApiHeaders(init?.headers);
   if (!headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
@@ -85,9 +98,9 @@ async function req<T = any>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${BASE_URL}${path}`, {
+      ...init,
       headers,
-      signal: controller.signal,
-      ...init
+      signal: controller.signal
     });
   } catch (error) {
     const message = error instanceof Error && error.name === 'AbortError'
@@ -129,6 +142,14 @@ async function req<T = any>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  accountBootstrap: (payload: { clerk_user_id: string; email: string; name?: string }) =>
+    req<{ session: { token: string; expires_at: string; user: InternalSessionUser }; account: AccountAccessState }>(
+      '/auth/account/bootstrap',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      }
+    ),
   internalLogin: (payload: { username: string; password: string }) =>
     req<{ token: string; expires_at: string; user: InternalSessionUser }>('/auth/login', {
       method: 'POST',

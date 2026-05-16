@@ -11,6 +11,7 @@ export type CreateAppOptions = {
   initDb?: boolean;
   seedDb?: boolean;
   enforceInternalAuth?: boolean;
+  enforceAccountProductAccess?: boolean;
 };
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -18,7 +19,8 @@ export function createApp(options: CreateAppOptions = {}) {
     forceDbRefresh = false,
     initDb: shouldInitDb = true,
     seedDb: shouldSeedDb = true,
-    enforceInternalAuth = false
+    enforceInternalAuth = false,
+    enforceAccountProductAccess = false
   } = options;
 
   if (forceDbRefresh) {
@@ -36,7 +38,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.set('trust proxy', process.env.TRUST_PROXY?.trim() || 'loopback, linklocal, uniquelocal');
   app.use(cors());
   app.use(express.json({ limit: '35mb' }));
-  registerCoreRoutes(app, { enforceInternalAuth });
+  registerCoreRoutes(app, { enforceInternalAuth, enforceAccountProductAccess });
   registerPlanningRoutes(app);
   registerFinanceRoutes(app);
   registerPortalRoutes(app);

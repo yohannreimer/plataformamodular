@@ -260,6 +260,11 @@ function readInternalUserByUsername(username: string): InternalUserRow | null {
   return row ?? null;
 }
 
+export function readInternalUserByUsernameForAuth(username: string): InternalUserDto | null {
+  const row = readInternalUserByUsername(username);
+  return row ? rowToDto(row) : null;
+}
+
 function readInternalUserById(userId: string): InternalUserRow | null {
   const row = db.prepare(`
     select id, username, display_name, role, permissions_json, preferences_json, organization_id, password_hash, is_active, last_login_at, created_at, updated_at
@@ -891,19 +896,11 @@ export function hasAnyInternalPermission(
   return permissions.some((permission) => hasInternalPermission(context, permission));
 }
 
-export function createInternalSessionForCredentials(username: string, password: string): {
+function createInternalSessionForUserRow(user: InternalUserRow): {
   token: string;
   expires_at: string;
   user: InternalAuthContext;
-} | null {
-  const user = readInternalUserByUsername(username.trim());
-  if (!user || Number(user.is_active) !== 1) {
-    return null;
-  }
-  if (!verifyInternalPassword(password, user.password_hash)) {
-    return null;
-  }
-
+} {
   const token = randomBytes(SESSION_TOKEN_BYTES).toString('base64url');
   const tokenHash = hashSessionToken(token);
   const nowIso = new Date().toISOString();
@@ -921,12 +918,13 @@ export function createInternalSessionForCredentials(username: string, password: 
     where id = ?
   `).run(nowIso, nowIso, user.id);
 
+  const role = normalizeRole(user.role);
   const context: InternalAuthContext = {
     internal_user_id: user.id,
     username: user.username,
     display_name: user.display_name,
-    role: normalizeRole(user.role),
-    permissions: resolvePermissionsForRole(normalizeRole(user.role), parsePermissionsJson(user.permissions_json)),
+    role,
+    permissions: resolvePermissionsForRole(role, parsePermissionsJson(user.permissions_json)),
     organization_id: user.organization_id,
     preferences: parsePreferencesJson(user.preferences_json)
   };
@@ -936,6 +934,35 @@ export function createInternalSessionForCredentials(username: string, password: 
     expires_at: expiresAt,
     user: context
   };
+}
+
+export function createInternalSessionForCredentials(username: string, password: string): {
+  token: string;
+  expires_at: string;
+  user: InternalAuthContext;
+} | null {
+  const user = readInternalUserByUsername(username.trim());
+  if (!user || Number(user.is_active) !== 1) {
+    return null;
+  }
+  if (!verifyInternalPassword(password, user.password_hash)) {
+    return null;
+  }
+
+  return createInternalSessionForUserRow(user);
+}
+
+export function createInternalSessionForUserId(internalUserId: string): {
+  token: string;
+  expires_at: string;
+  user: InternalAuthContext;
+} | null {
+  const user = readInternalUserById(internalUserId);
+  if (!user || Number(user.is_active) !== 1) {
+    return null;
+  }
+
+  return createInternalSessionForUserRow(user);
 }
 
 export function logoutInternalSessionByToken(token: string): void {

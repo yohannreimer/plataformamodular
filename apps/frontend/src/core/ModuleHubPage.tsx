@@ -3,11 +3,13 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Lock, Users, CreditCard } from 'lucide-react';
 import prymeiraLogo from '../assets/prymeira-logo.png';
 import type { InternalSessionUser } from '../auth/session';
-import { visibleModulesForUser, PLATFORM_MODULES } from './modules';
+import { findAccountProduct, type AccountAccessState } from '../auth/accountAccess';
+import { canAccessModule, PLATFORM_MODULES } from './modules';
 import './ModuleHubPage.css';
 
 type ModuleHubPageProps = {
   user: InternalSessionUser;
+  accountAccess: AccountAccessState | null;
   onLogout: () => void;
 };
 
@@ -19,10 +21,8 @@ function initials(name: string): string {
     .join('');
 }
 
-export function ModuleHubPage({ user, onLogout }: ModuleHubPageProps) {
+export function ModuleHubPage({ user, accountAccess, onLogout }: ModuleHubPageProps) {
   const userLabel = user.display_name || user.username;
-  const accessibleModules = visibleModulesForUser(user);
-  const accessibleIds = new Set(accessibleModules.map((m) => m.id));
 
   const todayLong = new Date().toLocaleDateString('pt-BR', {
     weekday: 'long',
@@ -63,9 +63,19 @@ export function ModuleHubPage({ user, onLogout }: ModuleHubPageProps) {
 
         <section className="hub-grid" aria-label="Módulos da plataforma">
           {PLATFORM_MODULES.map((mod) => {
-            const accessible = accessibleIds.has(mod.id);
+            const productAccess = findAccountProduct(accountAccess, mod.productKey);
+            const hasInternalAccess = canAccessModule(user, mod);
+            const hasProductAccess = productAccess?.allowed === true;
+            const accessible = hasInternalAccess && hasProductAccess;
             const locked = mod.comingSoon || !accessible;
             const Icon = mod.icon;
+            const statusLabel = mod.comingSoon
+              ? 'Em breve'
+              : hasProductAccess
+                ? hasInternalAccess ? 'Ativo' : 'Sem permissão'
+                : productAccess?.status === 'trial'
+                  ? 'Trial'
+                  : 'Sem acesso';
 
             const cardInner = (
               <>
@@ -82,7 +92,7 @@ export function ModuleHubPage({ user, onLogout }: ModuleHubPageProps) {
                 <p className="hub-card__desc">{mod.description}</p>
                 <div className="hub-card__footer">
                   <span className={`hub-card__badge ${locked ? 'hub-card__badge--locked' : ''}`.trim()}>
-                    {locked ? (mod.comingSoon ? 'Em breve' : 'Sem acesso') : 'Ativo'}
+                    {statusLabel}
                   </span>
                   {mod.hubStat && !locked ? (
                     <span className="hub-card__stat">{mod.hubStat}</span>

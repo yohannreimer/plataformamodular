@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { expect, test } from 'vitest';
 import { ModuleHubPage } from './ModuleHubPage';
 import type { InternalSessionUser } from '../auth/session';
+import type { AccountAccessState } from '../auth/accountAccess';
 
 function user(role: InternalSessionUser['role'], permissions: InternalSessionUser['permissions']): InternalSessionUser {
   return {
@@ -14,10 +15,44 @@ function user(role: InternalSessionUser['role'], permissions: InternalSessionUse
   };
 }
 
+const allProductsAllowed: AccountAccessState = {
+  customer: {
+    id: 'customer-1',
+    email: 'yohannreimer20@gmail.com',
+    name: 'Yohann'
+  },
+  products: [
+    {
+      product_key: 'orquestrador',
+      name: 'Gestão Técnica',
+      description: null,
+      app_url: 'http://localhost:5173/m/tecnico',
+      marketing_url: null,
+      status: 'active',
+      allowed: true,
+      reason: 'active_entitlement'
+    },
+    {
+      product_key: 'financeiro',
+      name: 'Financeiro',
+      description: null,
+      app_url: 'http://localhost:5173/m/financeiro',
+      marketing_url: null,
+      status: 'active',
+      allowed: true,
+      reason: 'active_entitlement'
+    }
+  ]
+};
+
 test('renders module cards with direct entry links', () => {
   render(
     <MemoryRouter>
-      <ModuleHubPage user={user('supremo', ['calendar', 'cohorts', 'finance.read'])} onLogout={() => null} />
+      <ModuleHubPage
+        user={user('supremo', ['calendar', 'cohorts', 'finance.read'])}
+        accountAccess={allProductsAllowed}
+        onLogout={() => null}
+      />
     </MemoryRouter>
   );
 
@@ -29,7 +64,11 @@ test('renders module cards with direct entry links', () => {
 test('renders only modules available to the user', () => {
   render(
     <MemoryRouter>
-      <ModuleHubPage user={user('custom', ['clients'])} onLogout={() => null} />
+      <ModuleHubPage
+        user={user('custom', ['clients'])}
+        accountAccess={allProductsAllowed}
+        onLogout={() => null}
+      />
     </MemoryRouter>
   );
 

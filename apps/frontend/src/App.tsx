@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useAuth, useUser } from '@clerk/clerk-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { PortalShell } from './portal/PortalShell';
@@ -31,6 +32,13 @@ import { FinanceAdvancedPage } from './finance/pages/FinanceAdvancedPage';
 import { FinanceSimulationPage } from './finance/pages/FinanceSimulationPage';
 import { api } from './services/api';
 import {
+  ACCOUNT_ACCESS_CHANGED_EVENT,
+  accountAccessStore,
+  hasAccountProductAccess,
+  type AccountAccessState
+} from './auth/accountAccess';
+import { setClerkTokenGetter } from './auth/clerkToken';
+import {
   INTERNAL_AUTH_CHANGED_EVENT,
   hasAnyPermission,
   internalSessionStore,
@@ -45,6 +53,7 @@ import {
   FINANCE_PERMISSIONS,
   TECHNICAL_BASE_PATH
 } from './core/modules';
+import { NoProductAccessPage } from './pages/NoProductAccessPage';
 const INTERNAL_TAB_INITIALIZED_KEY = 'orquestrador_internal_tab_initialized_v1';
 type KanbanAlertCounts = {
   implementation: number;
@@ -86,6 +95,18 @@ function ProtectedRoute({
     return <Navigate to={fallback} replace />;
   }
   return <>{children}</>;
+}
+
+function BootstrapErrorView({ message, onLogout }: { message: string; onLogout: () => void }) {
+  return (
+    <div style={{ padding: '24px', fontFamily: 'system-ui, sans-serif' }}>
+      <h1 style={{ margin: '0 0 8px', fontSize: '20px' }}>Acesso não configurado</h1>
+      <p style={{ margin: '0 0 16px', maxWidth: '520px' }}>{message}</p>
+      <button type="button" className="login-submit" onClick={onLogout}>
+        Trocar conta
+      </button>
+    </div>
+  );
 }
 
 function FinanceModuleRoutes({ user, defaultRoute, onLogout }: { user: InternalSessionUser; defaultRoute: string; onLogout?: () => void }) {
@@ -247,8 +268,12 @@ function TechnicalModuleRoutes({ user, defaultRoute }: { user: InternalSessionUs
 }
 
 function InternalApp() {
+  const { getToken, isLoaded: clerkLoaded, isSignedIn, signOut } = useAuth();
+  const { user: clerkUser } = useUser();
   const [session, setSession] = useState<InternalSessionData | null>(() => internalSessionStore.read());
+  const [accountAccess, setAccountAccess] = useState<AccountAccessState | null>(() => accountAccessStore.read());
   const [loadingSession, setLoadingSession] = useState(true);
+  const [bootstrapError, setBootstrapError] = useState('');
   const [kanbanAlertCounts, setKanbanAlertCounts] = useState<KanbanAlertCounts>({
     implementation: 0,
     support: 0
@@ -257,15 +282,31 @@ function InternalApp() {
   const location = useLocation();
 
   useEffect(() => {
+    if (!isSignedIn) {
+      setClerkTokenGetter(null);
+      return;
+    }
+
+    setClerkTokenGetter(() => getToken());
+    return () => setClerkTokenGetter(null);
+  }, [getToken, isSignedIn]);
+
+  useEffect(() => {
     const sync = () => setSession(internalSessionStore.read());
     window.addEventListener(INTERNAL_AUTH_CHANGED_EVENT, sync);
     return () => window.removeEventListener(INTERNAL_AUTH_CHANGED_EVENT, sync);
   }, []);
 
   useEffect(() => {
+    const sync = () => setAccountAccess(accountAccessStore.read());
+    window.addEventListener(ACCOUNT_ACCESS_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(ACCOUNT_ACCESS_CHANGED_EVENT, sync);
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     const current = internalSessionStore.read();
-    if (!current) {
+    if (!current || !isSignedIn) {
       setLoadingSession(false);
       return;
     }
@@ -284,7 +325,9 @@ function InternalApp() {
       .catch(() => {
         if (cancelled) return;
         internalSessionStore.clear();
+        accountAccessStore.clear();
         setSession(null);
+        setAccountAccess(null);
       })
       .finally(() => {
         if (!cancelled) setLoadingSession(false);
@@ -293,26 +336,73 @@ function InternalApp() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isSignedIn]);
 
-  async function handleLogin(username: string, password: string): Promise<{ ok: boolean; message?: string }> {
-    try {
-      const response = await api.internalLogin({ username, password });
-      internalSessionStore.save(response);
-      setSession(response);
-      window.sessionStorage.setItem(INTERNAL_TAB_INITIALIZED_KEY, '1');
-      navigate('/app', { replace: true });
-      return { ok: true };
-    } catch (error) {
-      return { ok: false, message: (error as Error).message };
+  useEffect(() => {
+    if (!clerkLoaded) return;
+    if (!isSignedIn) {
+      internalSessionStore.clear();
+      accountAccessStore.clear();
+      setSession(null);
+      setAccountAccess(null);
+      setLoadingSession(false);
+      setBootstrapError('');
+      return;
     }
-  }
+
+    if (session || !clerkUser) {
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingSession(true);
+    setBootstrapError('');
+
+    getToken()
+      .then((token) => {
+        if (!token) throw new Error('Não foi possível ler o token Clerk.');
+        return api.accountBootstrap({
+          clerk_user_id: clerkUser.id,
+          email: clerkUser.primaryEmailAddress?.emailAddress ?? '',
+          name: clerkUser.fullName ?? clerkUser.primaryEmailAddress?.emailAddress ?? undefined
+        });
+      })
+      .then((response) => {
+        if (cancelled) return;
+        internalSessionStore.save(response.session);
+        accountAccessStore.save(response.account);
+        setSession(response.session);
+        setAccountAccess(response.account);
+        window.sessionStorage.setItem(INTERNAL_TAB_INITIALIZED_KEY, '1');
+        if (location.pathname === '/') {
+          navigate('/app', { replace: true });
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        internalSessionStore.clear();
+        accountAccessStore.clear();
+        setSession(null);
+        setAccountAccess(null);
+        setBootstrapError((error as Error).message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSession(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clerkLoaded, isSignedIn, clerkUser, getToken, session, location.pathname, navigate]);
 
   function handleLogout() {
     api.internalLogout().catch(() => null).finally(() => {
       internalSessionStore.clear();
+      accountAccessStore.clear();
       window.sessionStorage.removeItem(INTERNAL_TAB_INITIALIZED_KEY);
       setSession(null);
+      setAccountAccess(null);
+      void signOut();
     });
   }
 
@@ -385,8 +475,20 @@ function InternalApp() {
     return <p style={{ padding: '24px' }}>Carregando sessão...</p>;
   }
 
+  if (!clerkLoaded) {
+    return <p style={{ padding: '24px' }}>Carregando autenticação...</p>;
+  }
+
+  if (!isSignedIn) {
+    return <LoginPage />;
+  }
+
+  if (bootstrapError && !session) {
+    return <BootstrapErrorView message={bootstrapError} onLogout={handleLogout} />;
+  }
+
   if (!session || !user) {
-    return <LoginPage onLogin={handleLogin} />;
+    return <p style={{ padding: '24px' }}>Preparando acesso...</p>;
   }
 
   if (legacyFinanceTarget) {
@@ -398,15 +500,22 @@ function InternalApp() {
   }
 
   if (isHubRoute) {
-    return <ModuleHubPage user={user} onLogout={handleLogout} />;
+    return <ModuleHubPage user={user} accountAccess={accountAccess} onLogout={handleLogout} />;
   }
 
   if (isFinanceRoute) {
+    if (!hasAccountProductAccess(accountAccess, 'financeiro')) {
+      return <NoProductAccessPage productKey="financeiro" onLogout={handleLogout} />;
+    }
     return <FinanceModuleRoutes user={user} defaultRoute="/app" onLogout={handleLogout} />;
   }
 
   if (!isTechnicalRoute) {
     return <Navigate to="/app" replace />;
+  }
+
+  if (!hasAccountProductAccess(accountAccess, 'orquestrador')) {
+    return <NoProductAccessPage productKey="orquestrador" onLogout={handleLogout} />;
   }
 
   return (
