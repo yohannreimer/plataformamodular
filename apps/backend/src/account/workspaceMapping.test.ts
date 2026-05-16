@@ -24,7 +24,7 @@ test('findOrCreateOrganizationForAccountWorkspace creates isolated organization'
   });
 
   assert.equal(org.account_workspace_id, 'workspace-acme');
-  assert.equal(org.name, 'Acme Ltda');
+  assert.equal(org.name, 'Acme Ltda (6f80fe9d)');
 
   const again = findOrCreateOrganizationForAccountWorkspace({
     accountWorkspaceId: 'workspace-acme',
@@ -33,7 +33,33 @@ test('findOrCreateOrganizationForAccountWorkspace creates isolated organization'
   });
 
   assert.equal(again.id, org.id);
-  assert.equal(again.name, 'Acme Ltda');
+  assert.equal(again.name, 'Acme Ltda (6f80fe9d)');
+
+  cleanupDbFiles(dbPath);
+});
+
+test('findOrCreateOrganizationForAccountWorkspace handles duplicate workspace display names', () => {
+  const dbPath = assignTestDbPath('account-workspace-org-duplicate-name');
+  cleanupDbFiles(dbPath);
+  resetDbConnection();
+  initDb();
+
+  const first = findOrCreateOrganizationForAccountWorkspace({
+    accountWorkspaceId: 'workspace-alpha',
+    workspaceName: 'Acme Ltda',
+    workspaceType: 'company'
+  });
+  const second = findOrCreateOrganizationForAccountWorkspace({
+    accountWorkspaceId: 'workspace-beta',
+    workspaceName: 'Acme Ltda',
+    workspaceType: 'company'
+  });
+
+  assert.notEqual(second.id, first.id);
+  assert.equal(first.name, 'Acme Ltda (a0ba8c07)');
+  assert.equal(second.name, 'Acme Ltda (231ac57e)');
+  assert.notEqual(first.name, second.name);
+  assert.notEqual(first.slug, second.slug);
 
   cleanupDbFiles(dbPath);
 });

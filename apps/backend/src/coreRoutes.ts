@@ -3170,22 +3170,23 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
         });
       }
 
+      let internalUser = readInternalUserByUsernameForAuth(email);
+      const bootstrapAdminEmails = readBootstrapAdminEmails();
+
+      if (!internalUser && !bootstrapAdminEmails.has(email)) {
+        return res.status(403).json({
+          message: 'Usuário ainda não foi provisionado na Plataforma Modular.',
+          reason: 'no_internal_user'
+        });
+      }
+
       const organization = findOrCreateOrganizationForAccountWorkspace({
         accountWorkspaceId: accountWorkspace.id,
         workspaceName: accountWorkspace.name,
         workspaceType: accountWorkspace.type
       });
-      let internalUser = readInternalUserByUsernameForAuth(email);
 
       if (!internalUser) {
-        const bootstrapAdminEmails = readBootstrapAdminEmails();
-        if (!bootstrapAdminEmails.has(email)) {
-          return res.status(403).json({
-            message: 'Usuário ainda não foi provisionado na Plataforma Modular.',
-            reason: 'no_internal_user'
-          });
-        }
-
         internalUser = createInternalUser({
           username: email,
           display_name: displayName,
