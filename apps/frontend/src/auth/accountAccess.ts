@@ -11,8 +11,22 @@ export type AccountProductAccess = {
   marketing_url: string | null;
   status: string;
   plan?: string;
+  source?: string;
+  limits?: Record<string, unknown>;
+  seats_limit?: number;
+  workspace_id?: string;
+  workspace_role?: string;
+  product_role?: string;
   allowed: boolean;
   reason: string;
+  upgrade_url?: string;
+};
+
+export type AccountWorkspace = {
+  id: string;
+  name: string;
+  type: string;
+  role: string;
 };
 
 export type AccountAccessState = {
@@ -21,6 +35,7 @@ export type AccountAccessState = {
     email: string;
     name: string | null;
   } | null;
+  workspace: AccountWorkspace | null;
   products: AccountProductAccess[];
 };
 
@@ -45,6 +60,9 @@ function normalizeAccountAccessState(raw: unknown): AccountAccessState | null {
   const customerSource = source.customer && typeof source.customer === 'object' && !Array.isArray(source.customer)
     ? source.customer as Record<string, unknown>
     : null;
+  const workspaceSource = source.workspace && typeof source.workspace === 'object' && !Array.isArray(source.workspace)
+    ? source.workspace as Record<string, unknown>
+    : null;
 
   return {
     customer: customerSource && typeof customerSource.id === 'string' && typeof customerSource.email === 'string'
@@ -52,6 +70,14 @@ function normalizeAccountAccessState(raw: unknown): AccountAccessState | null {
         id: customerSource.id,
         email: customerSource.email,
         name: typeof customerSource.name === 'string' ? customerSource.name : null
+      }
+      : null,
+    workspace: workspaceSource && typeof workspaceSource.id === 'string' && typeof workspaceSource.name === 'string'
+      ? {
+        id: workspaceSource.id,
+        name: workspaceSource.name,
+        type: typeof workspaceSource.type === 'string' ? workspaceSource.type : 'individual',
+        role: typeof workspaceSource.role === 'string' ? workspaceSource.role : 'member'
       }
       : null,
     products

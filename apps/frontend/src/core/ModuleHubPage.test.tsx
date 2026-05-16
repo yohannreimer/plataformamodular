@@ -21,6 +21,12 @@ const allProductsAllowed: AccountAccessState = {
     email: 'yohannreimer20@gmail.com',
     name: 'Yohann'
   },
+  workspace: {
+    id: 'workspace-1',
+    name: 'Yohann',
+    type: 'individual',
+    role: 'owner'
+  },
   products: [
     {
       product_key: 'orquestrador',
@@ -29,6 +35,9 @@ const allProductsAllowed: AccountAccessState = {
       app_url: 'http://localhost:5173/m/tecnico',
       marketing_url: null,
       status: 'active',
+      workspace_id: 'workspace-1',
+      workspace_role: 'owner',
+      product_role: 'owner',
       allowed: true,
       reason: 'active_entitlement'
     },
@@ -39,6 +48,9 @@ const allProductsAllowed: AccountAccessState = {
       app_url: 'http://localhost:5173/m/financeiro',
       marketing_url: null,
       status: 'active',
+      workspace_id: 'workspace-1',
+      workspace_role: 'owner',
+      product_role: 'owner',
       allowed: true,
       reason: 'active_entitlement'
     }

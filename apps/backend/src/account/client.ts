@@ -1,11 +1,22 @@
 export type AccountProductKey = 'orquestrador' | 'financeiro';
 
+export type AccountWorkspace = {
+  id: string;
+  name: string;
+  type: string;
+  role: string;
+};
+
 export type AccountAccessDecision = {
   allowed: boolean;
+  workspace_id?: string;
+  workspace_role?: string;
   product_key: string;
+  product_role?: string;
   status: string;
   plan?: string;
   source?: string;
+  seats_limit?: number;
   limits?: Record<string, unknown>;
   reason: string;
   upgrade_url?: string;
@@ -17,6 +28,7 @@ export type AccountMeProductsResponse = {
     email: string;
     name: string | null;
   } | null;
+  workspace: AccountWorkspace | null;
   products: Array<{
     product_key: string;
     name: string;
@@ -25,8 +37,15 @@ export type AccountMeProductsResponse = {
     marketing_url: string | null;
     status: string;
     plan?: string;
+    source?: string;
+    limits?: Record<string, unknown>;
+    seats_limit?: number;
+    workspace_id?: string;
+    workspace_role?: string;
+    product_role?: string;
     allowed: boolean;
     reason: string;
+    upgrade_url?: string;
   }>;
 };
 
@@ -59,7 +78,12 @@ async function accountRequest<T>(path: string, clerkToken: string, init?: Reques
 }
 
 export async function syncAccountCustomer(clerkToken: string, input: AccountSyncCustomerInput) {
-  return accountRequest<{ customer_id: string; clerk_user_id: string; email: string }>(
+  return accountRequest<{
+    customer_id: string;
+    clerk_user_id: string;
+    email: string;
+    workspace: AccountWorkspace;
+  }>(
     '/customers/sync',
     clerkToken,
     {
