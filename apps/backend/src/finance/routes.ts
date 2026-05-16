@@ -573,6 +573,15 @@ function requireFinancePermission(permissions: InternalPermissionKey[]) {
   };
 }
 
+function requireFinanceTenant(_req: Request, res: Response, next: NextFunction) {
+  try {
+    readFinanceOrganizationId(res);
+    return next();
+  } catch (error) {
+    return respondFinanceError(res, error);
+  }
+}
+
 function readFinanceOrganizationId(res: Response) {
   const context = readInternalAuthContext(res);
   if (!context) {
@@ -697,6 +706,7 @@ export function registerFinanceRoutes(app: Express) {
   const router = express.Router();
 
   router.use(requireInternalAuth);
+  router.use(requireFinanceTenant);
 
   router.post('/assistant/interpret', requireFinancePermission(['finance.read']), async (req, res) => {
     const parsed = assistantInterpretSchema.safeParse(req.body);

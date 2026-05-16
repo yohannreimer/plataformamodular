@@ -448,6 +448,17 @@ test('Financeiro fails closed when authenticated user has no organization', asyn
   assert.equal(res.status, 403);
   assert.equal(res.body.reason, 'missing_tenant');
 
+  const transcribeRes = await request(app)
+    .post('/finance/assistant/transcribe')
+    .set('Authorization', `Bearer ${loginRes.body.token}`)
+    .send({
+      audio_base64: Buffer.from('audio-placeholder-for-tenant-check').toString('base64'),
+      mime_type: 'audio/webm'
+    });
+
+  assert.equal(transcribeRes.status, 403);
+  assert.equal(transcribeRes.body.reason, 'missing_tenant');
+
   cleanupDbFiles(dbPath);
 });
 
