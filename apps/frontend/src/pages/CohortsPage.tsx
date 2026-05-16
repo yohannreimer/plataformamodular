@@ -1,0 +1,1875 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { api, createInternalAuthHeaders } from '../services/api';
+import type { Cohort, Module } from '../types';
+import { Panel, StatusBadge } from '../shared/components';
+import { statusLabel, statusTone } from '../utils/labels';
+import { askDestructiveConfirmation } from '../utils/destructive';
+
+type BlockDraft = {
+  key: string;
+  module_id: string;
+  duration_days: number;
+};
+
+type CohortBlock = {
+  id: string;
+  module_id: string;
+  module_name: string;
+  order_in_cohort: number;
+  start_day_offset: number;
+  duration_days: number;
+};
+
+type CohortAllocation = {
+  id: string;
+  company_id?: string;
+  company_name: string;
+  module_id?: string;
+  module_name: string;
+  delivery_mode?: 'ministrado' | 'entregavel';
+  entry_day: number;
+  status: 'Previsto' | 'Confirmado' | 'Executado' | 'Cancelado';
+  override_installation_prereq?: number;
+  override_reason?: string | null;
+};
+
+type CohortDetail = Cohort & {
+  blocks: CohortBlock[];
+  allocations: CohortAllocation[];
+  schedule_days?: Array<{
+    day_index: number;
+    day_date: string;
+    start_time: string | null;
+    end_time: string | null;
+  }>;
+  participants?: Array<{
+    id: string;
+    company_id: string;
+    company_name: string;
+    participant_name: string;
+    created_at: string;
+    module_ids?: string[];
+  }>;
+};
+
+type CohortScheduleDayDraft = {
+  key: string;
+  day_index: number;
+  day_date: string;
+  start_time: string;
+  end_time: string;
+};
+
+const statuses = ['Planejada', 'Aguardando_quorum', 'Confirmada', 'Concluida', 'Cancelada'];
+const periodOptions = ['Integral', 'Meio_periodo'] as const;
+const deliveryModeOptions = ['Online', 'Presencial', 'Hibrida'] as const;
+type CohortSortKey = 'module_names' | 'start_date' | 'delivery_mode' | 'company_names' | 'technician_name' | 'status';
+
+const cohortWizardSteps = [
+  { id: 1, title: 'Informações', hint: 'dados básicos' },
+  { id: 2, title: 'Módulos', hint: 'sequência' },
+  { id: 3, title: 'Agenda', hint: 'datas e horários' },
+  { id: 4, title: 'Clientes', hint: 'confirmação' }
+] as const;
+
+function randomKey() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+function moduleShortLabel(name: string): string {
+  return name
+    .replace(/^Treinamento\s+/i, '')
+    .replace(/^TopSolid'?/i, 'TopSolid')
+    .trim();
+}
+
+function splitPipeList(value?: string | null): string[] {
+  return String(value ?? '')
+    .split(/\s*\|\s*/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function cohortModuleSequence(cohort: Cohort): string[] {
+  const moduleNames = splitPipeList(cohort.module_names);
+  if (moduleNames.length > 0) return moduleNames;
+
+  const fallback = String(cohort.name ?? '').trim();
+  return fallback ? [fallback] : [];
+}
+
+function moduleDurationById(modules: Module[], moduleId: string): number {
+  const duration = modules.find((module) => module.id === moduleId)?.duration_days;
+  return Math.max(1, Number(duration) || 1);
+}
+
+function formatDateBr(dateIso: string): string {
+  const [year, month, day] = dateIso.split('-').map(Number);
+  if (!year || !month || !day) return dateIso;
+  return new Date(year, month - 1, day).toLocaleDateString('pt-BR');
+}
+
+function parseIso(dateIso: string): Date {
+  const [year, month, day] = dateIso.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function toIso(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function isWeekend(date: Date): boolean {
+  const weekday = date.getDay();
+  return weekday === 0 || weekday === 6;
+}
+
+function addBusinessDays(dateIso: string, offset: number): string {
+  const date = parseIso(dateIso);
+  while (isWeekend(date)) {
+    date.setDate(date.getDate() + 1);
+  }
+  let moved = 0;
+  while (moved < offset) {
+    date.setDate(date.getDate() + 1);
+    if (!isWeekend(date)) moved += 1;
+  }
+  return toIso(date);
+}
+
+function formatCohortSchedule(period?: 'Integral' | 'Meio_periodo', startTime?: string | null, endTime?: string | null): string {
+  if (period !== 'Meio_periodo') return statusLabel(period ?? 'Integral');
+  if (startTime && endTime) return `${statusLabel('Meio_periodo')} (${startTime} - ${endTime})`;
+  return statusLabel('Meio_periodo');
+}
+
+function modulesFromEntry(blocks: CohortBlock[], entryModuleId: string): string[] {
+  const entry = blocks.find((block) => block.module_id === entryModuleId);
+  if (!entry) return blocks.map((block) => block.module_id);
+  return blocks
+    .filter((block) => block.order_in_cohort >= entry.order_in_cohort)
+    .map((block) => block.module_id);
+}
+
+function totalScheduleEntriesFromBlocks(
+  draft: BlockDraft[],
+  selectedPeriod: (typeof periodOptions)[number]
+) {
+  const baseDays = Math.max(1, totalDaysFromDraftBlocks(draft));
+  return selectedPeriod === 'Meio_periodo' ? baseDays * 2 : baseDays;
+}
+
+function totalDaysFromDraftBlocks(draft: BlockDraft[]) {
+  let day = 1;
+  let maxEnd = 1;
+  draft.forEach((block) => {
+    const duration = Math.max(1, Number(block.duration_days) || 1);
+    const endDay = day + duration - 1;
+    maxEnd = Math.max(maxEnd, endDay);
+    day += duration;
+  });
+  return maxEnd;
+}
+
+export function CohortsPage() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [modules, setModules] = useState<Module[]>([]);
+  const [technicians, setTechnicians] = useState<Array<{ id: string; name: string }>>([]);
+  const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([]);
+
+  const [query, setQuery] = useState('');
+  const [sortKey, setSortKey] = useState<CohortSortKey>('start_date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingDetail, setEditingDetail] = useState<CohortDetail | null>(null);
+  const [cohortWizardStep, setCohortWizardStep] = useState(1);
+
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  const [code, setCode] = useState('');
+  const [name, setName] = useState('');
+  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [technicianId, setTechnicianId] = useState('');
+  const [capacity, setCapacity] = useState(8);
+  const [status, setStatus] = useState('Planejada');
+  const [period, setPeriod] = useState<(typeof periodOptions)[number]>('Integral');
+  const [cohortStartTime, setCohortStartTime] = useState('13:30');
+  const [cohortEndTime, setCohortEndTime] = useState('17:00');
+  const [deliveryMode, setDeliveryMode] = useState<(typeof deliveryModeOptions)[number]>('Online');
+  const [notes, setNotes] = useState('');
+  const [blocks, setBlocks] = useState<BlockDraft[]>([]);
+  const [scheduleDays, setScheduleDays] = useState<CohortScheduleDayDraft[]>([]);
+
+  const [entryModuleId, setEntryModuleId] = useState('');
+  const [allocationModuleIds, setAllocationModuleIds] = useState<string[]>([]);
+  const [allocationCompanyId, setAllocationCompanyId] = useState('');
+  const [allocationNotes, setAllocationNotes] = useState('');
+  const [allocationSuggestions, setAllocationSuggestions] = useState<any>(null);
+  const [participantCompanyId, setParticipantCompanyId] = useState('');
+  const [participantName, setParticipantName] = useState('');
+  const [savingParticipantModules, setSavingParticipantModules] = useState<string[]>([]);
+  const [emittingCertificateKeys, setEmittingCertificateKeys] = useState<string[]>([]);
+  const emittingCertificateLockRef = useRef<Set<string>>(new Set());
+  const [isCheckingTechnicianConflict, setIsCheckingTechnicianConflict] = useState(false);
+  const [hasTechnicianConflict, setHasTechnicianConflict] = useState(false);
+  const [technicianConflictMessage, setTechnicianConflictMessage] = useState('');
+  const [technicianConflictCohortId, setTechnicianConflictCohortId] = useState<string | null>(null);
+  const scheduleBasisRef = useRef<{ startDate: string; totalDays: number; period: (typeof periodOptions)[number] } | null>(null);
+
+  function suggestedCode(rows: Cohort[]) {
+    const maxNumeric = rows.reduce((acc, row) => {
+      const match = String(row.code ?? '').toUpperCase().match(/^TUR-(\d+)$/);
+      if (!match) return acc;
+      const numeric = Number(match[1]);
+      return Number.isFinite(numeric) ? Math.max(acc, numeric) : acc;
+    }, 0);
+    const next = maxNumeric + 1;
+    return `TUR-${String(next).padStart(3, '0')}`;
+  }
+
+  function toBlockPayload(draft: BlockDraft[]) {
+    let day = 1;
+    return draft.map((block, index) => {
+      const duration = Math.max(1, Number(block.duration_days) || 1);
+      const payload = {
+        module_id: block.module_id,
+        order_in_cohort: index + 1,
+        start_day_offset: day,
+        duration_days: duration
+      };
+      day += duration;
+      return payload;
+    });
+  }
+
+  function buildScheduleDraft(
+    startDateValue: string,
+    totalDays: number,
+    current: CohortScheduleDayDraft[],
+    defaultStartTime: string,
+    defaultEndTime: string
+  ): CohortScheduleDayDraft[] {
+    const currentByIndex = new Map(current.map((item) => [item.day_index, item]));
+    const rows: CohortScheduleDayDraft[] = [];
+    for (let index = 1; index <= totalDays; index += 1) {
+      const existing = currentByIndex.get(index);
+      rows.push({
+        key: existing?.key ?? randomKey(),
+        day_index: index,
+        day_date: existing?.day_date ?? addBusinessDays(startDateValue, index - 1),
+        start_time: existing?.start_time ?? defaultStartTime,
+        end_time: existing?.end_time ?? defaultEndTime
+      });
+    }
+    return rows;
+  }
+
+  async function loadAll() {
+    const [cohortRows, moduleRows, technicianRows, companyRows] = await Promise.all([
+      api.cohorts(),
+      api.modules(),
+      api.technicians(),
+      api.companies()
+    ]);
+
+    setCohorts(cohortRows as Cohort[]);
+    setModules(moduleRows as Module[]);
+    setTechnicians(technicianRows as Array<{ id: string; name: string }>);
+    setCompanies((companyRows as any[]).map((company) => ({ id: company.id, name: company.name })));
+
+    return {
+      cohorts: cohortRows as Cohort[],
+      modules: moduleRows as Module[]
+    };
+  }
+
+  async function loadCohortDetail(cohortId: string) {
+    const detail = await api.cohortById(cohortId) as CohortDetail;
+    setEditingDetail(detail);
+
+    const firstBlockModuleId = detail.blocks?.[0]?.module_id ?? '';
+    const chosenEntryModule = entryModuleId && detail.blocks.some((block) => block.module_id === entryModuleId)
+      ? entryModuleId
+      : firstBlockModuleId;
+
+    setEntryModuleId(chosenEntryModule);
+    setAllocationModuleIds(modulesFromEntry(detail.blocks ?? [], chosenEntryModule));
+    const preferredCompanyId = detail.participants?.[0]?.company_id
+      ?? detail.allocations?.[0]?.company_id
+      ?? '';
+    setParticipantCompanyId((prev) => {
+      if (!prev) return preferredCompanyId;
+      const valid = (detail.allocations ?? []).some((allocation) => allocation.company_id === prev)
+        || (detail.participants ?? []).some((participant) => participant.company_id === prev);
+      return valid ? prev : preferredCompanyId;
+    });
+
+    return detail;
+  }
+
+  function resetForm(availableModules: Module[], existingCohorts: Cohort[]) {
+    const requestedCode = (searchParams.get('module') ?? '').toUpperCase();
+    const requestedModule = availableModules.find((item) => item.code.toUpperCase() === requestedCode);
+    const firstModule = requestedModule ?? availableModules[0];
+
+    setEditingId(null);
+    setCohortWizardStep(1);
+    setCode(suggestedCode(existingCohorts));
+    setName('Nova turma');
+    setStartDate(new Date().toISOString().slice(0, 10));
+    setTechnicianId('');
+    setCapacity(8);
+    setStatus('Planejada');
+    setPeriod('Integral');
+    setCohortStartTime('13:30');
+    setCohortEndTime('17:00');
+    setDeliveryMode('Online');
+    setNotes('');
+    const nextBlocks = firstModule ? [{ key: randomKey(), module_id: firstModule.id, duration_days: firstModule.duration_days || 1 }] : [];
+    setBlocks(nextBlocks);
+    setScheduleDays(buildScheduleDraft(
+      new Date().toISOString().slice(0, 10),
+      totalScheduleEntriesFromBlocks(nextBlocks, 'Integral'),
+      [],
+      '13:30',
+      '17:00'
+    ));
+
+    setEditingDetail(null);
+    setEntryModuleId('');
+    setAllocationModuleIds([]);
+    setAllocationCompanyId('');
+    setAllocationNotes('');
+    setAllocationSuggestions(null);
+    setParticipantCompanyId('');
+    setParticipantName('');
+    setIsCheckingTechnicianConflict(false);
+    setHasTechnicianConflict(false);
+    setTechnicianConflictMessage('');
+    setTechnicianConflictCohortId(null);
+    scheduleBasisRef.current = {
+      startDate: new Date().toISOString().slice(0, 10),
+      totalDays: totalScheduleEntriesFromBlocks(nextBlocks, 'Integral'),
+      period: 'Integral'
+    };
+  }
+
+  useEffect(() => {
+    loadAll()
+      .then(({ cohorts: rows, modules: moduleRows }) => resetForm(moduleRows, rows))
+      .catch((err: Error) => setError(err.message));
+  }, []);
+
+  useEffect(() => {
+    if (!editingId || !entryModuleId) return;
+
+    api.allocationSuggestions(editingId, entryModuleId)
+      .then((response: any) => {
+        setAllocationSuggestions(response);
+        const rows = response.companies ?? [];
+        const firstReady = rows.find((company: any) => !company.block_reason)?.id ?? rows[0]?.id ?? '';
+        setAllocationCompanyId((prev) => (rows.some((company: any) => company.id === prev) ? prev : firstReady));
+      })
+      .catch(() => setAllocationSuggestions(null));
+  }, [editingId, entryModuleId]);
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return cohorts;
+    const normalized = query.toLowerCase();
+    return cohorts.filter((item) =>
+      `${item.code} ${item.name} ${item.module_names ?? ''} ${item.company_names ?? ''} ${item.technician_name ?? ''}`.toLowerCase().includes(normalized)
+    );
+  }, [cohorts, query]);
+
+  const ordered = useMemo(() => {
+    const rows = [...filtered];
+    rows.sort((a, b) => {
+      const direction = sortDirection === 'asc' ? 1 : -1;
+      if (sortKey === 'start_date') {
+        return String(a.start_date).localeCompare(String(b.start_date)) * direction;
+      }
+      if (sortKey === 'delivery_mode') {
+        const left = `${statusLabel(a.delivery_mode ?? 'Online')} ${statusLabel(a.period ?? 'Integral')}`;
+        const right = `${statusLabel(b.delivery_mode ?? 'Online')} ${statusLabel(b.period ?? 'Integral')}`;
+        return left.localeCompare(right) * direction;
+      }
+      const left = String((a as any)[sortKey] ?? '');
+      const right = String((b as any)[sortKey] ?? '');
+      return left.localeCompare(right) * direction;
+    });
+    return rows;
+  }, [filtered, sortKey, sortDirection]);
+
+  function toggleSort(nextKey: CohortSortKey) {
+    if (sortKey === nextKey) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(nextKey);
+    setSortDirection(nextKey === 'start_date' ? 'asc' : 'desc');
+  }
+
+  function sortIndicator(nextKey: CohortSortKey) {
+    if (sortKey !== nextKey) return '';
+    return sortDirection === 'asc' ? ' ↑' : ' ↓';
+  }
+
+  function shouldIgnoreRowOpen(target: EventTarget | null) {
+    return target instanceof HTMLElement && Boolean(target.closest('a, button, input, select, textarea, label'));
+  }
+
+  const blockPreview = useMemo(() => toBlockPayload(blocks), [blocks]);
+
+  const allocationBlocks = useMemo(() => {
+    if (!editingDetail?.blocks) return [] as CohortBlock[];
+    const selected = new Set(allocationModuleIds);
+    return editingDetail.blocks
+      .filter((block) => selected.has(block.module_id))
+      .sort((a, b) => a.order_in_cohort - b.order_in_cohort);
+  }, [editingDetail, allocationModuleIds]);
+
+  const selectedCompanySuggestion = useMemo(() => {
+    const rows = allocationSuggestions?.companies ?? [];
+    return rows.find((company: any) => company.id === allocationCompanyId) ?? null;
+  }, [allocationSuggestions, allocationCompanyId]);
+  const isReadyToAddCompany = Boolean(
+    allocationCompanyId &&
+    entryModuleId &&
+    allocationBlocks.length > 0 &&
+    !selectedCompanySuggestion?.block_reason
+  );
+
+  const participantsByCompany = useMemo(() => {
+    const rows = editingDetail?.participants ?? [];
+    return rows.reduce<Record<string, Array<{ id: string; name: string; company_name: string; module_ids: string[] }>>>((acc, row) => {
+      const key = row.company_id;
+      acc[key] = acc[key] ?? [];
+      acc[key].push({
+        id: row.id,
+        name: row.participant_name,
+        company_name: row.company_name,
+        module_ids: Array.isArray(row.module_ids) ? row.module_ids : []
+      });
+      return acc;
+    }, {});
+  }, [editingDetail]);
+
+  const participantCountByCompanyModule = useMemo(() => {
+    const counts = new Map<string, number>();
+    Object.entries(participantsByCompany).forEach(([companyId, participants]) => {
+      participants.forEach((participant) => {
+        participant.module_ids.forEach((moduleId) => {
+          const key = `${companyId}::${moduleId}`;
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+        });
+      });
+    });
+    return counts;
+  }, [participantsByCompany]);
+
+  const allocationCompanies = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    (editingDetail?.allocations ?? []).forEach((allocation) => {
+      if (!allocation.company_id || allocation.status === 'Cancelado') return;
+      if (map.has(allocation.company_id)) return;
+      map.set(allocation.company_id, {
+        id: allocation.company_id,
+        name: allocation.company_name
+      });
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [editingDetail]);
+
+  const participantCompanyModules = useMemo(() => {
+    if (!editingDetail || !participantCompanyId) return [] as Array<{
+      module_id: string;
+      module_name: string;
+      order_in_cohort: number;
+      start_day_offset: number;
+      duration_days: number;
+    }>;
+
+    const blockByModule = new Map(
+      (editingDetail.blocks ?? []).map((block) => [block.module_id, block])
+    );
+
+    const modulesMap = new Map<string, {
+      module_id: string;
+      module_name: string;
+      order_in_cohort: number;
+      start_day_offset: number;
+      duration_days: number;
+    }>();
+
+    (editingDetail.allocations ?? []).forEach((allocation) => {
+      if (!allocation.company_id || allocation.company_id !== participantCompanyId) return;
+      if (!allocation.module_id || allocation.status === 'Cancelado') return;
+      const block = blockByModule.get(allocation.module_id);
+      modulesMap.set(allocation.module_id, {
+        module_id: allocation.module_id,
+        module_name: allocation.module_name ?? block?.module_name ?? allocation.module_id,
+        order_in_cohort: block?.order_in_cohort ?? Number.MAX_SAFE_INTEGER,
+        start_day_offset: block?.start_day_offset ?? allocation.entry_day,
+        duration_days: block?.duration_days ?? 1
+      });
+    });
+
+    return Array.from(modulesMap.values()).sort((a, b) => {
+      if (a.order_in_cohort !== b.order_in_cohort) {
+        return a.order_in_cohort - b.order_in_cohort;
+      }
+      return a.module_name.localeCompare(b.module_name);
+    });
+  }, [editingDetail, participantCompanyId]);
+
+  const certificateTargets = useMemo(() => {
+    const map = new Map<string, {
+      company_id: string;
+      company_name: string;
+      module_id: string;
+      module_name: string;
+      delivery_mode: 'ministrado' | 'entregavel';
+      participants_count: number;
+    }>();
+    (editingDetail?.allocations ?? []).forEach((allocation) => {
+      if (!allocation.company_id || !allocation.module_id) return;
+      if (allocation.status === 'Cancelado') return;
+      const key = `${allocation.company_id}::${allocation.module_id}`;
+      if (map.has(key)) return;
+      map.set(key, {
+        company_id: allocation.company_id,
+        company_name: allocation.company_name,
+        module_id: allocation.module_id,
+        module_name: allocation.module_name,
+        delivery_mode: allocation.delivery_mode ?? 'ministrado',
+        participants_count: participantCountByCompanyModule.get(key) ?? 0
+      });
+    });
+    return Array.from(map.values()).sort((a, b) => {
+      const companyCompare = a.company_name.localeCompare(b.company_name);
+      if (companyCompare !== 0) return companyCompare;
+      return a.module_name.localeCompare(b.module_name);
+    });
+  }, [editingDetail, participantCountByCompanyModule]);
+
+  const stats = useMemo(() => {
+    const open = cohorts.filter((cohort) => ['Planejada', 'Aguardando_quorum', 'Confirmada'].includes(cohort.status)).length;
+    const confirmed = cohorts.filter((cohort) => cohort.status === 'Confirmada').length;
+    const noTech = cohorts.filter((cohort) => !cohort.technician_id).length;
+    return { total: cohorts.length, open, confirmed, noTech };
+  }, [cohorts]);
+
+  useEffect(() => {
+    if (!technicianId || !startDate || blockPreview.length === 0 || status === 'Cancelada') {
+      setIsCheckingTechnicianConflict(false);
+      setHasTechnicianConflict(false);
+      setTechnicianConflictMessage('');
+      setTechnicianConflictCohortId(null);
+      return;
+    }
+
+    let active = true;
+    setIsCheckingTechnicianConflict(true);
+    api.checkTechnicianConflict({
+      technician_id: technicianId,
+      start_date: startDate,
+      status,
+      period,
+      start_time: period === 'Meio_periodo' ? cohortStartTime : null,
+      end_time: period === 'Meio_periodo' ? cohortEndTime : null,
+      schedule_days: scheduleDays.map((day) => ({
+        day_index: day.day_index,
+        day_date: day.day_date,
+        start_time: day.start_time || null,
+        end_time: day.end_time || null
+      })),
+      blocks: blockPreview,
+      exclude_cohort_id: editingId ?? undefined
+    }).then((response: any) => {
+      if (!active) return;
+      if (response.has_conflict) {
+        setHasTechnicianConflict(true);
+        setTechnicianConflictMessage(response.message ?? 'Conflito de agenda detectado para o técnico.');
+        setTechnicianConflictCohortId(response.conflict?.cohort_id ?? null);
+      } else {
+        setHasTechnicianConflict(false);
+        setTechnicianConflictMessage('');
+        setTechnicianConflictCohortId(null);
+      }
+    }).catch(() => {
+      if (!active) return;
+      setHasTechnicianConflict(false);
+      setTechnicianConflictMessage('Não foi possível validar a agenda agora. O bloqueio será aplicado ao salvar.');
+      setTechnicianConflictCohortId(null);
+    }).finally(() => {
+      if (active) setIsCheckingTechnicianConflict(false);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [technicianId, startDate, status, period, cohortStartTime, cohortEndTime, scheduleDays, blockPreview, editingId]);
+
+  useEffect(() => {
+    const totalDays = totalScheduleEntriesFromBlocks(blocks, period);
+    const previousBasis = scheduleBasisRef.current;
+    const shouldResetDates = !previousBasis
+      || previousBasis.startDate !== startDate
+      || previousBasis.totalDays !== totalDays
+      || previousBasis.period !== period;
+
+    setScheduleDays((prev) => buildScheduleDraft(
+      startDate,
+      totalDays,
+      shouldResetDates ? [] : prev,
+      cohortStartTime,
+      cohortEndTime
+    ));
+    scheduleBasisRef.current = { startDate, totalDays, period };
+  }, [startDate, blocks, period, cohortStartTime, cohortEndTime]);
+
+  function addBlock() {
+    const fallbackModuleId = modules[0]?.id ?? '';
+    setBlocks((prev) => [
+      ...prev,
+      {
+        key: randomKey(),
+        module_id: fallbackModuleId,
+        duration_days: moduleDurationById(modules, fallbackModuleId)
+      }
+    ]);
+  }
+
+  function removeBlock(key: string) {
+    setBlocks((prev) => prev.filter((block) => block.key !== key));
+  }
+
+  function updateBlock(key: string, patch: Partial<BlockDraft>) {
+    setBlocks((prev) => prev.map((block) => (block.key === key ? { ...block, ...patch } : block)));
+  }
+
+  function setDefaultModulesFromEntry(detail: CohortDetail, nextEntryModuleId: string) {
+    setEntryModuleId(nextEntryModuleId);
+    setAllocationModuleIds(modulesFromEntry(detail.blocks ?? [], nextEntryModuleId));
+  }
+
+  function toggleAllocationModule(moduleId: string) {
+    if (moduleId === entryModuleId) return;
+
+    setAllocationModuleIds((prev) => {
+      if (prev.includes(moduleId)) {
+        return prev.filter((id) => id !== moduleId);
+      }
+      return [...prev, moduleId];
+    });
+  }
+
+  function currentMaxWizardStep() {
+    return editingId ? 4 : 3;
+  }
+
+  function validateCohortWizardStep(step: number) {
+    setError('');
+    setMessage('');
+
+    if (step === 1) {
+      if (!code.trim() || !name.trim()) {
+        setError('Preencha código e nome da turma antes de avançar.');
+        return false;
+      }
+      if (!startDate) {
+        setError('Informe a data de início antes de avançar.');
+        return false;
+      }
+      if (isCheckingTechnicianConflict) {
+        setError('Aguarde a validação da agenda do técnico.');
+        return false;
+      }
+      if (hasTechnicianConflict) {
+        setError(technicianConflictMessage || 'Conflito de agenda detectado para o técnico.');
+        return false;
+      }
+      if (period === 'Meio_periodo') {
+        if (!cohortStartTime || !cohortEndTime) {
+          setError('Para turma de meio período, informe horário inicial e final.');
+          return false;
+        }
+        if (cohortEndTime <= cohortStartTime) {
+          setError('Horário final deve ser maior que o horário inicial.');
+          return false;
+        }
+      }
+    }
+
+    if (step === 2) {
+      if (blocks.length === 0) {
+        setError('Adicione pelo menos um bloco para montar a sequência.');
+        return false;
+      }
+      if (blocks.some((block) => !block.module_id)) {
+        setError('Todos os blocos precisam ter um módulo selecionado.');
+        return false;
+      }
+      const uniqueModules = new Set(blocks.map((block) => block.module_id));
+      if (uniqueModules.size !== blocks.length) {
+        setError('Não repita o mesmo módulo na mesma turma.');
+        return false;
+      }
+    }
+
+    if (step === 3) {
+      if (scheduleDays.length !== totalScheduleEntriesFromBlocks(blocks, period)) {
+        setError('Agenda personalizada inválida. Atualize as datas da turma.');
+        return false;
+      }
+      if (scheduleDays.some((day) => !day.day_date)) {
+        setError('Preencha a data de todos os dias da agenda personalizada.');
+        return false;
+      }
+      const invalidTimeDay = scheduleDays.find((day) => !day.start_time || !day.end_time || day.end_time <= day.start_time);
+      if (invalidTimeDay) {
+        setError(`Verifique o horário do dia ${invalidTimeDay.day_index}.`);
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  function goToNextCohortStep() {
+    if (!validateCohortWizardStep(cohortWizardStep)) return;
+    setCohortWizardStep((prev) => Math.min(prev + 1, currentMaxWizardStep()));
+  }
+
+  function goToPreviousCohortStep() {
+    setError('');
+    setCohortWizardStep((prev) => Math.max(prev - 1, 1));
+  }
+
+  function closeEditor() {
+    const shouldClose = window.confirm(
+      editingId
+        ? 'Fechar sem salvar as alterações desta turma?'
+        : 'Fechar agora descarta esta turma em criação. Deseja fechar mesmo assim?'
+    );
+    if (!shouldClose) return;
+
+    resetForm(modules, cohorts);
+    setShowForm(false);
+  }
+
+  async function startEdit(cohortId: string) {
+    try {
+      setError('');
+      setMessage('');
+
+      const detail = await loadCohortDetail(cohortId);
+
+      setEditingId(detail.id);
+      setCode(detail.code);
+      setName(detail.name);
+      setStartDate(detail.start_date);
+      setTechnicianId(detail.technician_id ?? '');
+      setCapacity(detail.capacity_companies);
+      setStatus(detail.status);
+      setPeriod((detail.period ?? 'Integral') as (typeof periodOptions)[number]);
+      setCohortStartTime(detail.start_time ?? '13:30');
+      setCohortEndTime(detail.end_time ?? '17:00');
+      setDeliveryMode((detail.delivery_mode ?? 'Online') as (typeof deliveryModeOptions)[number]);
+      setNotes(detail.notes ?? '');
+      const nextBlocks = (detail.blocks ?? []).map((block) => ({
+        key: randomKey(),
+        module_id: block.module_id,
+        duration_days: Number(block.duration_days) || 1
+      }));
+      const nextTotalDays = totalScheduleEntriesFromBlocks(nextBlocks, (detail.period ?? 'Integral') as (typeof periodOptions)[number]);
+      scheduleBasisRef.current = {
+        startDate: detail.start_date,
+        totalDays: nextTotalDays,
+        period: (detail.period ?? 'Integral') as (typeof periodOptions)[number]
+      };
+      setBlocks(nextBlocks);
+      const persistedSchedule = (detail.schedule_days ?? []).map((day) => ({
+        key: randomKey(),
+        day_index: Number(day.day_index),
+        day_date: day.day_date,
+        start_time: day.start_time ?? '',
+        end_time: day.end_time ?? ''
+      }));
+      setScheduleDays(buildScheduleDraft(
+        detail.start_date,
+        nextTotalDays,
+        persistedSchedule,
+        detail.start_time ?? '13:30',
+        detail.end_time ?? '17:00'
+      ));
+      setAllocationCompanyId('');
+      setAllocationNotes('');
+      setParticipantCompanyId(detail.allocations?.[0]?.company_id ?? '');
+      setParticipantName('');
+      setCohortWizardStep(1);
+      setShowForm(true);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function deleteCohort(cohort: Cohort) {
+    const confirmationPhrase = askDestructiveConfirmation(`Excluir turma ${cohort.code} - ${cohort.name}`);
+    if (!confirmationPhrase) {
+      setMessage('Ação cancelada.');
+      return;
+    }
+
+    try {
+      await api.deleteCohort(cohort.id, confirmationPhrase);
+      setMessage('Turma excluída com sucesso.');
+
+      const refreshed = await loadAll();
+      if (editingId === cohort.id) {
+        resetForm(refreshed.modules, refreshed.cohorts);
+        setShowForm(false);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function allocateCompanyInCohort() {
+    if (!editingId) return;
+
+    if (!allocationCompanyId || !entryModuleId) {
+      setError('Selecione empresa e módulo de entrada para alocar.');
+      return;
+    }
+
+    if (allocationModuleIds.length === 0) {
+      setError('Selecione pelo menos um módulo para participação.');
+      return;
+    }
+
+    const finalModuleIds = Array.from(new Set([...allocationModuleIds, entryModuleId]));
+
+    try {
+      const response = await api.allocateCompanyByEntryModule(editingId, {
+        company_id: allocationCompanyId,
+        entry_module_id: entryModuleId,
+        module_ids: finalModuleIds,
+        notes: allocationNotes.trim() || null
+      }) as any;
+
+      const total = Array.isArray(response.allocations_created) ? response.allocations_created.length : finalModuleIds.length;
+      setMessage(`Cliente alocado em ${total} módulo(s), com dias calculados automaticamente.`);
+      setAllocationNotes('');
+
+      await loadCohortDetail(editingId);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function updateAllocationStatus(allocationId: string, nextStatus: 'Confirmado' | 'Executado' | 'Cancelado') {
+    try {
+      await api.updateAllocationStatus(allocationId, { status: nextStatus });
+      if (editingId) {
+        await loadCohortDetail(editingId);
+      }
+      setMessage(`Status da alocação atualizado para ${nextStatus}.`);
+    } catch (err) {
+      const apiMessage = (err as Error).message;
+      if (nextStatus === 'Executado' && apiMessage.includes('Instala')) {
+        const reason = window.prompt('Pré-requisito de Instalação pendente. Informe justificativa para override manual:');
+        if (!reason?.trim()) {
+          setError(apiMessage);
+          return;
+        }
+
+        try {
+          await api.updateAllocationStatus(allocationId, {
+            status: nextStatus,
+            override_installation_prereq: true,
+            override_reason: reason.trim()
+          });
+          if (editingId) {
+            await loadCohortDetail(editingId);
+          }
+          setMessage('Status atualizado para Executado com override manual.');
+          return;
+        } catch (overrideErr) {
+          setError((overrideErr as Error).message);
+          return;
+        }
+      }
+      setError(apiMessage);
+    }
+  }
+
+  async function addParticipant() {
+    if (!editingId) return;
+    if (!participantCompanyId) {
+      setError('Selecione a empresa para cadastrar participante.');
+      return;
+    }
+    if (!participantName.trim()) {
+      setError('Informe o nome do participante.');
+      return;
+    }
+    try {
+      await api.addCohortParticipant(editingId, {
+        company_id: participantCompanyId,
+        participant_name: participantName.trim()
+      });
+      setParticipantName('');
+      await loadCohortDetail(editingId);
+      setMessage('Participante adicionado.');
+      setError('');
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function removeParticipant(participantId: string) {
+    if (!editingId) return;
+    try {
+      await api.deleteCohortParticipant(editingId, participantId);
+      await loadCohortDetail(editingId);
+      setMessage('Participante removido.');
+      setError('');
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function saveParticipantModules(participantId: string, moduleIds: string[]) {
+    if (!editingId) return;
+    setSavingParticipantModules((prev) => (prev.includes(participantId) ? prev : [...prev, participantId]));
+    try {
+      await api.updateCohortParticipantModules(editingId, participantId, { module_ids: moduleIds });
+      await loadCohortDetail(editingId);
+      setMessage('Módulos do participante atualizados.');
+      setError('');
+    } catch (err) {
+      setError((err as Error).message);
+      await loadCohortDetail(editingId);
+    } finally {
+      setSavingParticipantModules((prev) => prev.filter((id) => id !== participantId));
+    }
+  }
+
+  function toggleParticipantModule(participantId: string, currentModuleIds: string[], moduleId: string) {
+    const current = new Set(currentModuleIds);
+    if (current.has(moduleId)) {
+      current.delete(moduleId);
+    } else {
+      current.add(moduleId);
+    }
+    const nextModuleIds = participantCompanyModules
+      .map((module) => module.module_id)
+      .filter((allowedModuleId) => current.has(allowedModuleId));
+
+    setEditingDetail((prev) => {
+      if (!prev) return prev;
+      const nextParticipants = (prev.participants ?? []).map((participant) => (
+        participant.id === participantId
+          ? { ...participant, module_ids: nextModuleIds }
+          : participant
+      ));
+      return { ...prev, participants: nextParticipants };
+    });
+
+    saveParticipantModules(participantId, nextModuleIds);
+  }
+
+  async function emitCertificate(companyId: string, moduleId: string) {
+    if (!editingId) return;
+    if (!companyId) {
+      setError('Selecione a empresa para emitir o certificado.');
+      return;
+    }
+    if (!moduleId) {
+      setError('Selecione o módulo para emitir o certificado.');
+      return;
+    }
+
+    const certKey = `${companyId}::${moduleId}`;
+    if (emittingCertificateLockRef.current.has(certKey)) {
+      return;
+    }
+
+    const certificateTarget = certificateTargets.find((item) => item.company_id === companyId && item.module_id === moduleId);
+    const isDeliverable = certificateTarget?.delivery_mode === 'entregavel';
+    const participantCount = participantCountByCompanyModule.get(`${companyId}::${moduleId}`) ?? 0;
+    if (!isDeliverable && participantCount === 0) {
+      setError('Cadastre participantes vinculados a este módulo para emitir o certificado.');
+      return;
+    }
+
+    const url = api.cohortCertificateUrl(editingId, companyId, {
+      download: true,
+      format: 'pdf',
+      moduleId
+    });
+
+    emittingCertificateLockRef.current.add(certKey);
+    setEmittingCertificateKeys((prev) => (prev.includes(certKey) ? prev : [...prev, certKey]));
+    try {
+      const response = await fetch(url, {
+        headers: createInternalAuthHeaders()
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(body || 'Erro ao gerar certificado.');
+      }
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get('Content-Disposition') ?? '';
+      const utfFileNameMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+      const simpleFileNameMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+      const encodedFileName = utfFileNameMatch?.[1] ?? simpleFileNameMatch?.[1] ?? '';
+      const fileName = encodedFileName ? decodeURIComponent(encodedFileName) : `certificado-${certKey}.pdf`;
+      const blobUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = blobUrl;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      emittingCertificateLockRef.current.delete(certKey);
+      setEmittingCertificateKeys((prev) => prev.filter((item) => item !== certKey));
+    }
+  }
+
+  async function submit(event?: React.FormEvent) {
+    event?.preventDefault();
+    setError('');
+    setMessage('');
+
+    if (!code.trim() || !name.trim()) {
+      setError('Preencha código e nome da turma.');
+      return;
+    }
+
+    if (blocks.length === 0) {
+      setError('Adicione pelo menos um bloco.');
+      return;
+    }
+
+    if (blocks.some((block) => !block.module_id)) {
+      setError('Todos os blocos precisam ter um módulo selecionado.');
+      return;
+    }
+
+    const uniqueModules = new Set(blocks.map((block) => block.module_id));
+    if (uniqueModules.size !== blocks.length) {
+      setError('Não repita o mesmo módulo na mesma turma.');
+      return;
+    }
+
+    if (isCheckingTechnicianConflict) {
+      setError('Aguarde a validação da agenda do técnico.');
+      return;
+    }
+    if (period === 'Meio_periodo') {
+      if (!cohortStartTime || !cohortEndTime) {
+        setError('Para turma de meio período, informe horário inicial e final.');
+        return;
+      }
+      if (cohortEndTime <= cohortStartTime) {
+        setError('Horário final deve ser maior que o horário inicial.');
+        return;
+      }
+    }
+    if (scheduleDays.length !== totalScheduleEntriesFromBlocks(blocks, period)) {
+      setError('Agenda personalizada inválida. Atualize as datas da turma.');
+      return;
+    }
+    if (scheduleDays.some((day) => !day.day_date)) {
+      setError('Preencha a data de todos os dias da agenda personalizada.');
+      return;
+    }
+    if (period === 'Meio_periodo') {
+      const invalidTimeDay = scheduleDays.find((day) => !day.start_time || !day.end_time || day.end_time <= day.start_time);
+      if (invalidTimeDay) {
+        setError(`Verifique o horário do dia ${invalidTimeDay.day_index}.`);
+        return;
+      }
+    }
+    if (hasTechnicianConflict) {
+      setError(technicianConflictMessage || 'Conflito de agenda detectado para o técnico.');
+      return;
+    }
+
+    const payload = {
+      code: code.trim().toUpperCase(),
+      name: name.trim(),
+      start_date: startDate,
+      technician_id: technicianId || null,
+      status,
+      capacity_companies: Math.max(1, Number(capacity) || 1),
+      period,
+      start_time: period === 'Meio_periodo' ? cohortStartTime : null,
+      end_time: period === 'Meio_periodo' ? cohortEndTime : null,
+      schedule_days: scheduleDays.map((day) => ({
+        day_index: day.day_index,
+        day_date: day.day_date,
+        start_time: period === 'Meio_periodo' ? (day.start_time || null) : null,
+        end_time: period === 'Meio_periodo' ? (day.end_time || null) : null
+      })),
+      delivery_mode: deliveryMode,
+      notes: notes.trim() || null,
+      blocks: blockPreview
+    };
+
+    try {
+      if (editingId) {
+        await api.updateCohort(editingId, payload);
+        setMessage('Turma atualizada com sucesso.');
+        await loadCohortDetail(editingId);
+        await loadAll();
+        if (cohortWizardStep === 3) {
+          setCohortWizardStep(4);
+        }
+      } else {
+        const created = await api.createCohort(payload) as { id: string };
+        setMessage('Turma criada com sucesso. Agora você já pode incluir clientes.');
+        await loadAll();
+
+        if (created?.id) {
+          await startEdit(created.id);
+          setCohortWizardStep(4);
+          setMessage('Turma criada com sucesso. Agora confirme os clientes e participantes.');
+          setShowForm(true);
+          return;
+        }
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  return (
+    <div className="page cohorts-page">
+      <header className="page-header">
+        <h1>Turmas</h1>
+        <p>Crie a sequência, atribua técnico e inclua clientes por módulo de entrada. O dia de entrada é calculado automaticamente.</p>
+      </header>
+
+      {error ? <p className="error">{error}</p> : null}
+      {message ? <p className="info">{message}</p> : null}
+
+      <div className="stats-grid stats-grid--cohorts">
+        <article className="mini-stat">
+          <span>Total de turmas</span>
+          <strong>{stats.total}</strong>
+        </article>
+        <article className="mini-stat">
+          <span>Turmas em operação</span>
+          <strong>{stats.open}</strong>
+        </article>
+        <article className="mini-stat">
+          <span>Confirmadas</span>
+          <strong>{stats.confirmed}</strong>
+        </article>
+        <article className="mini-stat">
+          <span>Sem técnico</span>
+          <strong>{stats.noTech}</strong>
+        </article>
+      </div>
+
+      <div className="cohorts-workspace">
+        <Panel
+          title="Turmas cadastradas"
+          className="cohorts-list-panel"
+          action={
+            <div className="actions actions-stretch">
+              <input
+                placeholder="Buscar por módulo, cliente ou técnico"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForm(true);
+                  resetForm(modules, cohorts);
+                }}
+              >
+                Criar turma
+              </button>
+            </div>
+          }
+        >
+          <div className="table-wrap table-wrap-wide">
+          <table className="table table-hover table-tight table-sticky-actions cohort-table">
+            <thead>
+              <tr>
+                <th><button type="button" className="table-sort-btn" onClick={() => toggleSort('module_names')}>Módulos{sortIndicator('module_names')}</button></th>
+                <th><button type="button" className="table-sort-btn" onClick={() => toggleSort('start_date')}>Data de início{sortIndicator('start_date')}</button></th>
+                <th><button type="button" className="table-sort-btn" onClick={() => toggleSort('company_names')}>Clientes{sortIndicator('company_names')}</button></th>
+                <th><button type="button" className="table-sort-btn" onClick={() => toggleSort('delivery_mode')}>Formato{sortIndicator('delivery_mode')}</button></th>
+                <th><button type="button" className="table-sort-btn" onClick={() => toggleSort('technician_name')}>Técnico{sortIndicator('technician_name')}</button></th>
+                <th><button type="button" className="table-sort-btn" onClick={() => toggleSort('status')}>Status{sortIndicator('status')}</button></th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ordered.map((cohort) => {
+                const modulesInSequence = cohortModuleSequence(cohort);
+                const moduleLabel = modulesInSequence.length > 0
+                  ? modulesInSequence.map(moduleShortLabel).join(' -> ')
+                  : 'Módulo não definido';
+                const internalLabel = [cohort.code, cohort.name].filter(Boolean).join(' · ');
+
+                return (
+                  <tr
+                    key={cohort.id}
+                    className={`row-openable ${editingId === cohort.id ? 'row-selected' : ''}`.trim()}
+                    onDoubleClick={(event) => {
+                      if (shouldIgnoreRowOpen(event.target)) return;
+                      navigate(`/turmas/${cohort.id}`);
+                    }}
+                    title="Dê dois cliques para abrir a turma"
+                  >
+                    <td className="cohort-module-cell" title={`${moduleLabel}${internalLabel ? ` (${internalLabel})` : ''}`}>
+                      <strong>{moduleLabel}</strong>
+                    </td>
+                    <td>{formatDateBr(cohort.start_date)}</td>
+                    <td className="cohort-client-cell" title={cohort.company_names || 'Sem cliente alocado'}>
+                      {cohort.company_names || 'Sem cliente alocado'}
+                    </td>
+                    <td>{statusLabel(cohort.delivery_mode ?? 'Online')} · {formatCohortSchedule(cohort.period, cohort.start_time, cohort.end_time)}</td>
+                    <td>{cohort.technician_name ?? 'Sem técnico'}</td>
+                    <td><StatusBadge value={statusLabel(cohort.status)} tone={statusTone(cohort.status)} /></td>
+                    <td className="actions actions-compact">
+                      <button type="button" onClick={() => startEdit(cohort.id)}>Editar</button>
+                      <button type="button" onClick={() => deleteCohort(cohort)}>Excluir</button>
+                      <Link to={`/turmas/${cohort.id}`} className="action-link-button">Abrir</Link>
+                    </td>
+                  </tr>
+                );
+              })}
+              {ordered.length === 0 ? (
+                <tr>
+                  <td colSpan={7}>
+                    <p className="muted">Nenhuma turma encontrada para o filtro informado.</p>
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+          </div>
+        </Panel>
+
+      </div>
+
+      {showForm ? (
+        <div className="cohort-editor-overlay" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            className="cohort-editor-backdrop"
+            onClick={closeEditor}
+            aria-label="Fechar edição de turma"
+          />
+          <div className="cohort-editor-modal">
+            <Panel
+              title={editingId ? `Editar turma ${code}` : 'Criar nova turma'}
+              className="cohorts-editor-panel"
+              action={(
+                <div className="cohort-editor-header-actions">
+                  <button type="button" className="cohort-editor-close-btn" onClick={closeEditor}>
+                    Fechar
+                  </button>
+                </div>
+              )}
+            >
+            <form className="form form-spacious" onSubmit={(event) => event.preventDefault()}>
+            <div className="cohort-wizard-progress" aria-label="Etapas da turma">
+              {cohortWizardSteps.slice(0, currentMaxWizardStep()).map((step) => (
+                <button
+                  key={step.id}
+                  type="button"
+                  className={`cohort-wizard-tab ${cohortWizardStep === step.id ? 'is-current' : ''} ${editingId ? step.id !== cohortWizardStep ? 'is-complete' : '' : cohortWizardStep > step.id ? 'is-complete' : ''}`}
+                  onClick={() => {
+                    if (editingId || step.id < cohortWizardStep) {
+                      setCohortWizardStep(step.id);
+                      setError('');
+                    }
+                  }}
+                  disabled={!editingId && step.id > cohortWizardStep}
+                >
+                  <span>{step.id}</span>
+                  <strong>{step.title}</strong>
+                  <small>{step.hint}</small>
+                </button>
+              ))}
+            </div>
+            {cohortWizardStep === 1 ? (
+            <div className="wizard-step">
+              <h3 className="wizard-step-title"><span className="step-index">1</span>Informações principais</h3>
+              <p className="form-hint">Defina dados da turma e valide conflito de agenda antes de salvar.</p>
+              <div className="three-col">
+                <label>
+                  Código
+                  <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} />
+                </label>
+                <label>
+                  Nome
+                  <input value={name} onChange={(event) => setName(event.target.value)} />
+                </label>
+                <label>
+                  Data de início
+                  <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+                </label>
+              </div>
+              <div className="three-col">
+                <label>
+                  Técnico
+                  <select value={technicianId} onChange={(event) => setTechnicianId(event.target.value)}>
+                    <option value="">Sem técnico</option>
+                    {technicians.map((technician) => (
+                      <option key={technician.id} value={technician.id}>{technician.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Capacidade da turma
+                  <input
+                    type="number"
+                    min={1}
+                    value={capacity}
+                    onChange={(event) => setCapacity(Math.max(1, Number(event.target.value) || 1))}
+                  />
+                </label>
+                <label>
+                  Status
+                  <select value={status} onChange={(event) => setStatus(event.target.value)}>
+                    {statuses.map((statusItem) => (
+                      <option key={statusItem} value={statusItem}>{statusLabel(statusItem)}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Período
+                  <select value={period} onChange={(event) => setPeriod(event.target.value as (typeof periodOptions)[number])}>
+                    {periodOptions.map((option) => (
+                      <option key={option} value={option}>{statusLabel(option)}</option>
+                    ))}
+                  </select>
+                </label>
+                {period === 'Meio_periodo' ? (
+                  <>
+                    <label>
+                      Horário inicial
+                      <input type="time" value={cohortStartTime} onChange={(event) => setCohortStartTime(event.target.value)} />
+                    </label>
+                    <label>
+                      Horário final
+                      <input type="time" value={cohortEndTime} onChange={(event) => setCohortEndTime(event.target.value)} />
+                    </label>
+                  </>
+                ) : null}
+              </div>
+              <div className="three-col">
+                <label>
+                  Formato da turma
+                  <select value={deliveryMode} onChange={(event) => setDeliveryMode(event.target.value as (typeof deliveryModeOptions)[number])}>
+                    {deliveryModeOptions.map((option) => (
+                      <option key={option} value={option}>{statusLabel(option)}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {technicianId && status !== 'Cancelada' ? (
+                <div className="form-subcard">
+                  {isCheckingTechnicianConflict ? (
+                    <p className="muted">Verificando conflito de agenda do técnico...</p>
+                  ) : hasTechnicianConflict ? (
+                    <div className="stack">
+                      <p className="error">{technicianConflictMessage}</p>
+                      {technicianConflictCohortId ? (
+                        <Link to={`/turmas/${technicianConflictCohortId}`}>Abrir turma conflitante</Link>
+                      ) : null}
+                    </div>
+                  ) : technicianConflictMessage ? (
+                    <p className="warn-text">{technicianConflictMessage}</p>
+                  ) : (
+                    <p className="ok-text">Agenda do técnico disponível para esta turma.</p>
+                  )}
+                </div>
+              ) : null}
+              <label>
+                Observações
+                <textarea rows={2} value={notes} onChange={(event) => setNotes(event.target.value)} />
+              </label>
+            </div>
+            ) : null}
+
+            {cohortWizardStep === 2 ? (
+            <div className="wizard-step">
+              <h3 className="wizard-step-title"><span className="step-index">2</span>Sequência de módulos da turma</h3>
+              <p className="muted">A ordem abaixo define automaticamente o início de cada módulo em diárias úteis.</p>
+              <div className="stack">
+                {blocks.map((block, index) => (
+                  <div key={block.key} className="form-subcard cohort-block-card">
+                    <strong className="cohort-block-title">Bloco {index + 1}</strong>
+                    <div className="cohort-block-grid">
+                      <label>
+                        Módulo
+                        <select
+                          value={block.module_id}
+                          onChange={(event) => {
+                            const nextModuleId = event.target.value;
+                            updateBlock(block.key, {
+                              module_id: nextModuleId,
+                              duration_days: moduleDurationById(modules, nextModuleId)
+                            });
+                          }}
+                        >
+                          {modules.map((module) => (
+                            <option key={module.id} value={module.id}>
+                              {moduleShortLabel(module.name)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Diárias
+                        <input
+                          type="number"
+                          min={1}
+                          value={block.duration_days}
+                          onChange={(event) => {
+                            updateBlock(block.key, { duration_days: Math.max(1, Number(event.target.value) || 1) });
+                          }}
+                        />
+                      </label>
+                      <button type="button" onClick={() => removeBlock(block.key)} disabled={blocks.length <= 1}>
+                        Remover bloco
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" onClick={addBlock}>Adicionar bloco</button>
+              </div>
+            </div>
+            ) : null}
+
+            {cohortWizardStep === 3 ? (
+            <div className="wizard-step">
+              <h3 className="wizard-step-title"><span className="step-index">3</span>Prévia da sequência</h3>
+              <div className="table-wrap">
+              <table className="table table-hover table-tight">
+                <thead>
+                  <tr>
+                    <th>Ordem</th>
+                    <th>Módulo</th>
+                    <th>Início</th>
+                    <th>Diárias</th>
+                    <th>Fim</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {blockPreview.map((block) => {
+                    const module = modules.find((item) => item.id === block.module_id);
+                    const endDay = block.start_day_offset + block.duration_days - 1;
+                    return (
+                      <tr key={block.order_in_cohort}>
+                        <td>{block.order_in_cohort}</td>
+                        <td>{module ? moduleShortLabel(module.name) : block.module_id}</td>
+                        <td>Dia {block.start_day_offset}</td>
+                        <td>{block.duration_days}</td>
+                        <td>Dia {endDay}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              </div>
+              <div className="form-subcard">
+                <strong>{period === 'Meio_periodo' ? 'Agenda personalizada por encontro' : 'Agenda personalizada por dia'}</strong>
+                <p className="muted">
+                  {period === 'Meio_periodo'
+                    ? 'Para meio período, cada diária gera 2 encontros. Você pode definir a data e o horário de cada encontro.'
+                    : 'Você pode definir dias não sequenciais e horário de cada dia.'}
+                </p>
+                <div className="table-wrap">
+                  <table className="table table-hover table-tight">
+                    <thead>
+                      <tr>
+                        <th>{period === 'Meio_periodo' ? 'Encontro' : 'Dia'}</th>
+                        <th>Data</th>
+                        <th>Início</th>
+                        <th>Fim</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scheduleDays.map((day) => (
+                        <tr key={day.key}>
+                          <td>{period === 'Meio_periodo' ? 'Encontro' : 'Dia'} {day.day_index}</td>
+                          <td>
+                            <input
+                              type="date"
+                              value={day.day_date}
+                              onChange={(event) => {
+                                const nextDate = event.target.value;
+                                setScheduleDays((prev) => prev.map((item) => (
+                                  item.key === day.key ? { ...item, day_date: nextDate } : item
+                                )));
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="time"
+                              value={day.start_time}
+                              onChange={(event) => {
+                                const nextValue = event.target.value;
+                                setScheduleDays((prev) => prev.map((item) => (
+                                  item.key === day.key ? { ...item, start_time: nextValue } : item
+                                )));
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="time"
+                              value={day.end_time}
+                              onChange={(event) => {
+                                const nextValue = event.target.value;
+                                setScheduleDays((prev) => prev.map((item) => (
+                                  item.key === day.key ? { ...item, end_time: nextValue } : item
+                                )));
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            ) : null}
+
+            {editingId && editingDetail && cohortWizardStep === 4 ? (
+              <div className="wizard-step">
+                <h3 className="wizard-step-title"><span className="step-index">4</span>Participantes por módulo de entrada</h3>
+                <p className="muted">Você escolhe o módulo de entrada e os módulos que o cliente vai fazer. O sistema calcula os dias sozinho.</p>
+
+                <div className="allocation-head-grid">
+                  <label>
+                    Cliente
+                    <select
+                      value={allocationCompanyId}
+                      onChange={(event) => setAllocationCompanyId(event.target.value)}
+                    >
+                      {(allocationSuggestions?.companies ?? companies).map((company: any) => (
+                        <option
+                          key={company.id}
+                          value={company.id}
+                          disabled={Boolean(company.block_reason)}
+                        >
+                          {company.name}{company.block_reason ? ` (${company.block_reason})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Módulo de entrada
+                    <select
+                      value={entryModuleId}
+                      onChange={(event) => setDefaultModulesFromEntry(editingDetail, event.target.value)}
+                    >
+                      {(editingDetail.blocks ?? []).map((block) => (
+                        <option key={block.id} value={block.module_id}>
+                          {block.order_in_cohort}. {moduleShortLabel(block.module_name)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Observação da alocação
+                    <input
+                      value={allocationNotes}
+                      onChange={(event) => setAllocationNotes(event.target.value)}
+                      placeholder="Opcional"
+                    />
+                  </label>
+                </div>
+
+                {selectedCompanySuggestion?.block_reason ? (
+                  <p className="error">Esta empresa está bloqueada para o módulo de entrada selecionado: {selectedCompanySuggestion.block_reason}</p>
+                ) : null}
+
+                <div className="allocation-module-grid">
+                  {(editingDetail.blocks ?? []).map((block) => {
+                    const checked = allocationModuleIds.includes(block.module_id);
+                    const locked = block.module_id === entryModuleId;
+                    return (
+                      <label
+                        key={block.id}
+                        className={`allocation-module-option ${checked ? 'is-checked' : ''} ${locked ? 'is-locked' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleAllocationModule(block.module_id)}
+                          disabled={locked}
+                        />
+                        <span className="allocation-module-title">
+                          {block.order_in_cohort}. {moduleShortLabel(block.module_name)}
+                        </span>
+                        <small>Dia {block.start_day_offset} • {block.duration_days} diária(s)</small>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                {allocationBlocks.length > 0 ? (
+                  <div className="form-subcard">
+                    <strong>Prévia dos dias que serão gravados:</strong>
+                    <div className="event-list">
+                      {allocationBlocks.map((block) => (
+                        <div key={block.id} className="event-item">
+                          <span>{moduleShortLabel(block.module_name)}</span>
+                          <span>Dia {block.start_day_offset}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className={`allocation-confirm-hint ${isReadyToAddCompany ? 'is-ready' : ''}`}>
+                  <strong>Passo obrigatório:</strong> depois de escolher cliente e módulos, clique no botão abaixo para confirmar a entrada na turma.
+                </div>
+
+                <button
+                  className={`allocation-confirm-btn ${isReadyToAddCompany ? 'is-ready' : ''}`}
+                  type="button"
+                  onClick={allocateCompanyInCohort}
+                  disabled={!allocationCompanyId || !entryModuleId || allocationBlocks.length === 0 || Boolean(selectedCompanySuggestion?.block_reason)}
+                >
+                  Confirmar cliente na turma
+                </button>
+
+                {editingDetail.allocations.length === 0 ? (
+                  <p>Nenhum cliente alocado ainda nesta turma.</p>
+                ) : (
+                  <div className="table-wrap">
+                  <table className="table table-hover table-tight">
+                    <thead>
+                      <tr>
+                        <th>Cliente</th>
+                        <th>Módulo</th>
+                        <th>Dia automático</th>
+                        <th>Status</th>
+                        <th>Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {editingDetail.allocations.map((allocation) => (
+                        <tr key={allocation.id}>
+                          <td>{allocation.company_name}</td>
+                          <td>{moduleShortLabel(allocation.module_name)}</td>
+                          <td>Dia {allocation.entry_day}</td>
+                          <td>
+                            <StatusBadge value={statusLabel(allocation.status)} tone={statusTone(allocation.status)} />
+                            {allocation.override_installation_prereq ? (
+                              <p className="muted allocation-override-note">
+                                Override MOD-01: {allocation.override_reason ?? 'Sem justificativa'}
+                              </p>
+                            ) : null}
+                          </td>
+                          <td className="actions actions-compact">
+                            <button type="button" onClick={() => updateAllocationStatus(allocation.id, 'Confirmado')}>
+                              Confirmar
+                            </button>
+                            <button type="button" onClick={() => updateAllocationStatus(allocation.id, 'Executado')}>
+                              Executar
+                            </button>
+                            <button type="button" onClick={() => updateAllocationStatus(allocation.id, 'Cancelado')}>
+                              Cancelar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  </div>
+                )}
+
+                <div className="form-subcard">
+                  <strong>Lista de participantes (certificado / relatório)</strong>
+                  {allocationCompanies.length === 0 ? (
+                    <p className="warn-text">
+                      Primeiro confirme um cliente na turma no passo acima para liberar esta etapa.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="three-col">
+                        <label>
+                          Empresa
+                          <select
+                            value={participantCompanyId}
+                            onChange={(event) => setParticipantCompanyId(event.target.value)}
+                          >
+                            <option value="">Selecione</option>
+                            {allocationCompanies.map((company) => (
+                              <option key={`participant-company-${company.id}`} value={company.id}>
+                                {company.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          Participante
+                          <input
+                            value={participantName}
+                            onChange={(event) => setParticipantName(event.target.value)}
+                            placeholder="Ex.: Claudio da Silva"
+                          />
+                        </label>
+                        <div className="actions actions-compact">
+                          <button type="button" onClick={addParticipant}>Adicionar participante</button>
+                        </div>
+                      </div>
+
+                      {participantCompanyId && participantCompanyModules.length > 0 ? (
+                        <div className="form-subcard">
+                          <strong>Módulos ativos para esta empresa</strong>
+                          <div className="participant-module-chip-list">
+                            {participantCompanyModules.map((module) => (
+                              <span key={`module-chip-${module.module_id}`} className="participant-module-chip">
+                                {module.order_in_cohort}. {moduleShortLabel(module.module_name)} • Dia {module.start_day_offset}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {participantCompanyId && (participantsByCompany[participantCompanyId]?.length ?? 0) > 0 ? (
+                        <div className="participant-module-matrix">
+                          {(participantsByCompany[participantCompanyId] ?? []).map((item) => (
+                            <div key={item.id} className="participant-module-row">
+                              <div className="participant-module-person">
+                                <strong>{item.name}</strong>
+                                <small>
+                                  Módulos vinculados:{' '}
+                                  {item.module_ids.length > 0
+                                    ? item.module_ids
+                                      .map((moduleId) => participantCompanyModules.find((module) => module.module_id === moduleId)?.module_name)
+                                      .filter(Boolean)
+                                      .map((name) => moduleShortLabel(String(name)))
+                                      .join(' • ')
+                                    : 'Nenhum'}
+                                </small>
+                              </div>
+                              <div className="participant-module-options">
+                                {participantCompanyModules.map((module) => {
+                                  const checked = item.module_ids.includes(module.module_id);
+                                  const isSaving = savingParticipantModules.includes(item.id);
+                                  return (
+                                    <label key={`participant-${item.id}-module-${module.module_id}`} className="participant-module-option">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        disabled={isSaving}
+                                        onChange={() => toggleParticipantModule(item.id, item.module_ids, module.module_id)}
+                                      />
+                                      <span>{module.order_in_cohort}. {moduleShortLabel(module.module_name)}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <div className="actions actions-compact">
+                                <button
+                                  type="button"
+                                  onClick={() => removeParticipant(item.id)}
+                                  disabled={savingParticipantModules.includes(item.id)}
+                                >
+                                  Remover
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="muted">Nenhum participante cadastrado para esta empresa.</p>
+                      )}
+
+                      {certificateTargets.length > 0 ? (
+                        <div className="form-subcard">
+                          <strong>Emitir certificado por empresa e módulo</strong>
+                          <div className="event-list">
+                            {certificateTargets.map((item) => (
+                              <div key={`cert-${item.company_id}-${item.module_id}`} className="event-item">
+                                <span>
+                                  {item.company_name} • {moduleShortLabel(item.module_name)} • {item.delivery_mode === 'entregavel' ? 'Entregável' : `${item.participants_count} participante(s)`}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => void emitCertificate(item.company_id, item.module_id)}
+                                  disabled={(item.delivery_mode !== 'entregavel' && item.participants_count === 0) || emittingCertificateKeys.includes(`${item.company_id}::${item.module_id}`)}
+                                  title={item.delivery_mode !== 'entregavel' && item.participants_count === 0 ? 'Cadastre participantes para habilitar' : 'Baixar certificado PDF do módulo'}
+                                >
+                                  {emittingCertificateKeys.includes(`${item.company_id}::${item.module_id}`) ? 'Gerando...' : 'Emitir PDF'}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="actions form-footer-actions cohort-wizard-footer">
+              <button type="button" onClick={closeEditor} className="button-secondary">
+                Cancelar
+              </button>
+              {cohortWizardStep > 1 ? (
+                <button type="button" onClick={goToPreviousCohortStep} className="button-secondary">
+                  Voltar
+                </button>
+              ) : null}
+              {cohortWizardStep < currentMaxWizardStep() && !(editingId && cohortWizardStep === 3) ? (
+                <button
+                  type="button"
+                  onClick={goToNextCohortStep}
+                  disabled={isCheckingTechnicianConflict || hasTechnicianConflict}
+                >
+                  Avançar
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void submit()}
+                  disabled={isCheckingTechnicianConflict || hasTechnicianConflict}
+                >
+                  {editingId
+                    ? (cohortWizardStep === 3 ? 'Salvar e avançar para clientes' : 'Salvar alterações')
+                    : 'Criar turma e continuar para clientes'}
+                </button>
+              )}
+            </div>
+            </form>
+          </Panel>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}

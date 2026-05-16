@@ -1,0 +1,80 @@
+/* apps/frontend/src/shared/tokens.css */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300..800&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  /* ── Brand ──────────────────────────────────── */
+  --brand-ink:          #1d2830;
+  --brand-accent:       #F5B700;
+  --brand-accent-soft:  #FFF8DB;
+
+  /* ── Superfícies ────────────────────────────── */
+  --canvas:             #f1f5f9;
+  --surface:            #ffffff;
+  --surface-soft:       #f8fafc;
+  --surface-muted:      #f1f5f9;
+
+  /* ── Texto ──────────────────────────────────── */
+  --text-primary:       #0f172a;
+  --text-secondary:     #475569;
+  --text-muted:         #64748b;
+  --text-soft:          #94a3b8;
+
+  /* ── Bordas ─────────────────────────────────── */
+  --border:             #e2e8f0;
+  --border-strong:      #cbd5e1;
+
+  /* ── Semânticas ─────────────────────────────── */
+  --color-success:      #059669;
+  --color-success-soft: #dcfce7;
+  --color-danger:       #dc2626;
+  --color-danger-soft:  #fee2e2;
+  --color-warning:      #d97706;
+  --color-warning-soft: #fffbeb;
+  --color-info:         #2563eb;
+  --color-info-soft:    #dbeafe;
+
+  /* ── Radius ─────────────────────────────────── */
+  --radius-sm:          7px;
+  --radius-md:          10px;
+  --radius-lg:          14px;
+  --radius-xl:          16px;
+
+  /* ── Sombras ────────────────────────────────── */
+  --shadow-none:        none;
+  --shadow-soft:        0 1px 3px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.04);
+  --shadow-md:          0 4px 12px rgba(15,23,42,.08), 0 2px 4px rgba(15,23,42,.04);
+  --shadow-lg:          0 12px 32px rgba(15,23,42,.10), 0 4px 8px rgba(15,23,42,.06);
+
+  /* ── Espaçamento ────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+
+  /* ── Movimento ──────────────────────────────── */
+  --motion-fast:  120ms ease-out;
+  --motion-base:  180ms ease-out;
+  --motion-slow:  280ms ease-out;
+
+  /* ── Focus ──────────────────────────────────── */
+  --focus-ring: 0 0 0 3px rgba(29,40,48,.18);
+}
+
+body {
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--text-primary);
+  background: var(--canvas);
+}
+
+.mono {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}

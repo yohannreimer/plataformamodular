@@ -1,0 +1,33 @@
+services:
+  backend:
+    image: ghcr.io/${GHCR_OWNER}/orquestrador-backend:${IMAGE_TAG:-latest}
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      APP_DB_PATH: /app/apps/backend/data/app.db
+      SEED_FINANCE_DEMO: "false"
+    volumes:
+      - orquestrador_data:/app/apps/backend/data
+    networks:
+      - orquestrador_swarm_net
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  frontend:
+    image: ghcr.io/${GHCR_OWNER}/orquestrador-frontend:${IMAGE_TAG:-latest}
+    ports:
+      - "8080:80"
+    networks:
+      - orquestrador_swarm_net
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+volumes:
+  orquestrador_data:
+
+networks:
+  orquestrador_swarm_net:
+    driver: overlay
+    attachable: true

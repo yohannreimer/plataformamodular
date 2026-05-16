@@ -1,0 +1,40 @@
+/* apps/frontend/src/shared/components/PageHeader.css */
+.page-header-shared {
+  margin-bottom: var(--space-6);
+}
+
+.page-header-shared__eyebrow {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  margin-bottom: var(--space-1);
+}
+
+.page-header-shared__title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.page-header-shared__description {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: var(--space-1);
+  line-height: 1.5;
+}
+
+.page-header-shared__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.page-header-shared__action {
+  flex-shrink: 0;
+  padding-top: 2px;
+}

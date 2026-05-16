@@ -1,0 +1,82 @@
+/* apps/frontend/src/shared/components/KpiCard.css */
+.kpi-card-shared {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.kpi-card-shared__label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.kpi-card-shared__value {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.kpi-card-shared__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-1);
+}
+
+.kpi-card-shared__hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.kpi-card-shared__delta {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 20px;
+}
+
+.kpi-card-shared__delta--positive {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.kpi-card-shared__delta--warning {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.kpi-card-shared__delta--critical {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.kpi-card-shared__sparkline {
+  margin-top: var(--space-2);
+}
+
+.kpi-card-shared--success { border-color: var(--color-success); }
+.kpi-card-shared--warning { border-color: var(--color-warning); }
+.kpi-card-shared--danger  { border-color: var(--color-danger); }
+
+a.kpi-card-shared {
+  text-decoration: none;
+  transition: box-shadow var(--motion-base);
+  cursor: pointer;
+}
+a.kpi-card-shared:hover {
+  box-shadow: var(--shadow-md);
+}
+a.kpi-card-shared:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

@@ -1,0 +1,241 @@
+import { useEffect, useMemo, useState } from 'react';
+import { api } from '../services/api';
+import { Panel } from '../shared/components';
+import type { LicenseProgram } from '../types';
+import { askDestructiveConfirmation } from '../utils/destructive';
+type ProgramSortKey = 'name' | 'usage_count';
+
+export function LicenseProgramsPage() {
+  const [rows, setRows] = useState<LicenseProgram[]>([]);
+  const [query, setQuery] = useState('');
+  const [sortKey, setSortKey] = useState<ProgramSortKey>('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [topsolidKind, setTopsolidKind] = useState<'' | 'Module' | 'Group'>('');
+  const [topsolidCode, setTopsolidCode] = useState('');
+  const [notes, setNotes] = useState('');
+
+  async function load() {
+    const response = await api.licensePrograms();
+    const list = response as LicenseProgram[];
+    setRows(list.map((item) => ({ ...item, usage_count: Number(item.usage_count ?? 0) })));
+  }
+
+  useEffect(() => {
+    load().catch((err: Error) => setError(err.message));
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return rows;
+    const normalized = query.toLowerCase();
+    return rows.filter((row) => `${row.name} ${row.topsolid_kind ?? ''} ${row.topsolid_code ?? ''} ${row.notes ?? ''}`.toLowerCase().includes(normalized));
+  }, [rows, query]);
+
+  const ordered = useMemo(() => {
+    const list = [...filtered];
+    list.sort((a, b) => {
+      const direction = sortDirection === 'asc' ? 1 : -1;
+      if (sortKey === 'usage_count') {
+        return (Number(a.usage_count ?? 0) - Number(b.usage_count ?? 0)) * direction;
+      }
+      return String(a.name ?? '').localeCompare(String(b.name ?? '')) * direction;
+    });
+    return list;
+  }, [filtered, sortKey, sortDirection]);
+
+  function toggleSort(nextKey: ProgramSortKey) {
+    if (sortKey === nextKey) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(nextKey);
+    setSortDirection(nextKey === 'name' ? 'asc' : 'desc');
+  }
+
+  function sortIndicator(nextKey: ProgramSortKey) {
+    if (sortKey !== nextKey) return '';
+    return sortDirection === 'asc' ? ' ↑' : ' ↓';
+  }
+
+  function resetForm() {
+    setEditingId(null);
+    setName('');
+    setTopsolidKind('');
+    setTopsolidCode('');
+    setNotes('');
+  }
+
+  function editProgram(row: LicenseProgram) {
+    setEditingId(row.id);
+    setName(row.name);
+    setTopsolidKind(row.topsolid_kind ?? '');
+    setTopsolidCode(row.topsolid_code ?? '');
+    setNotes(row.notes ?? '');
+  }
+
+  async function submitProgram() {
+    if (!name.trim()) {
+      setError('Informe o nome do programa.');
+      return;
+    }
+
+    setError('');
+    setMessage('');
+
+    try {
+      if (editingId) {
+        await api.updateLicenseProgram(editingId, {
+          name: name.trim(),
+          topsolid_kind: topsolidKind || null,
+          topsolid_code: topsolidCode.trim() || null,
+          notes: notes.trim() || null
+        });
+        setMessage('Programa atualizado com sucesso.');
+      } else {
+        await api.createLicenseProgram({
+          name: name.trim(),
+          topsolid_kind: topsolidKind || null,
+          topsolid_code: topsolidCode.trim() || null,
+          notes: notes.trim() || null
+        });
+        setMessage('Programa cadastrado com sucesso.');
+      }
+      resetForm();
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function deleteProgram(row: LicenseProgram) {
+    const confirmationPhrase = askDestructiveConfirmation(`Excluir programa "${row.name}"`);
+    if (!confirmationPhrase) {
+      setMessage('Ação cancelada.');
+      return;
+    }
+
+    setError('');
+    setMessage('');
+
+    try {
+      await api.deleteLicenseProgram(row.id, confirmationPhrase);
+      setMessage('Programa excluído.');
+      if (editingId === row.id) {
+        resetForm();
+      }
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  return (
+    <div className="page">
+      <header className="page-header">
+        <h1>Programas de Licença</h1>
+        <p>Catálogo único para padronizar nomes dos softwares e evitar erro de digitação no cadastro de licenças.</p>
+      </header>
+
+      {error ? <p className="error">{error}</p> : null}
+      {message ? <p className="info">{message}</p> : null}
+
+      <Panel title={editingId ? 'Editar programa' : 'Novo programa'}>
+        <div className="form">
+          <p className="form-hint">Use o código TopSolid para importar licenças com segurança mesmo quando o nome do arquivo vier diferente do cadastro.</p>
+          <div className="two-col">
+            <label>
+              Nome do programa
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Ex.: TopSolid CAM"
+              />
+            </label>
+            <label>
+              Tipo TopSolid
+              <select value={topsolidKind} onChange={(event) => setTopsolidKind(event.target.value as '' | 'Module' | 'Group')}>
+                <option value="">Não vinculado</option>
+                <option value="Module">Module</option>
+                <option value="Group">Group</option>
+              </select>
+            </label>
+          </div>
+          <div className="two-col">
+            <label>
+              Código TopSolid
+              <input
+                value={topsolidCode}
+                onChange={(event) => setTopsolidCode(event.target.value)}
+                placeholder="Ex.: 600"
+              />
+            </label>
+            <label>
+              Observações
+              <input
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder="Opcional"
+              />
+            </label>
+          </div>
+          <div className="actions actions-compact">
+            <button type="button" onClick={submitProgram}>
+              {editingId ? 'Salvar alterações' : 'Adicionar programa'}
+            </button>
+            {editingId ? (
+              <button type="button" onClick={resetForm}>Cancelar edição</button>
+            ) : null}
+          </div>
+        </div>
+      </Panel>
+
+      <Panel
+        title="Programas cadastrados"
+        action={(
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar por nome..."
+          />
+        )}
+      >
+        <table className="table table-hover table-tight">
+          <thead>
+            <tr>
+              <th><button type="button" className="table-sort-btn" onClick={() => toggleSort('name')}>Programa{sortIndicator('name')}</button></th>
+              <th>Código TopSolid</th>
+              <th>Observações</th>
+              <th><button type="button" className="table-sort-btn" onClick={() => toggleSort('usage_count')}>Em uso{sortIndicator('usage_count')}</button></th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ordered.map((row) => (
+              <tr key={row.id}>
+                <td><strong>{row.name}</strong></td>
+                <td>{row.topsolid_kind && row.topsolid_code ? `${row.topsolid_kind}:${row.topsolid_code}` : '—'}</td>
+                <td>{row.notes || '—'}</td>
+                <td>{row.usage_count}</td>
+                <td className="actions actions-compact">
+                  <button type="button" onClick={() => editProgram(row)}>Editar</button>
+                  <button
+                    type="button"
+                    onClick={() => deleteProgram(row)}
+                    disabled={row.usage_count > 0}
+                    title={row.usage_count > 0 ? 'Programa em uso por licenças.' : ''}
+                  >
+                    Excluir
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Panel>
+    </div>
+  );
+}

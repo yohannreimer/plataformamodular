@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg version="1.0" xmlns="http://www.w3.org/2000/svg"
+ viewBox="0 0 395 460"
+ preserveAspectRatio="xMidYMid meet">
+
+<!-- P icon in Prymeira golden yellow, standalone -->
+<g transform="translate(0.000000,460.000000) scale(0.100000,-0.100000)"
+fill="#F5B700" fill-rule="evenodd" stroke="none">
+<path d="M 200 4400
+L 1400 4400
+C 3900 4400 3900 1400 1400 1400
+L 1400 300
+L 2100 300
+L 2100 0
+L 0 0
+L 0 300
+L 200 300
+Z
+M 3000 3100
+A 850 850 0 1 0 1300 3100
+A 850 850 0 1 0 3000 3100
+Z"/>
+</g>
+
+</svg>

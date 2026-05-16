@@ -1,0 +1,12 @@
+/* apps/frontend/src/shared/components/Skeleton.css */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 1; }
+}
+
+.skeleton-block {
+  background: var(--surface-muted);
+  border-radius: var(--radius-sm);
+  animation: skeleton-pulse 1.2s ease-in-out infinite;
+  display: block;
+}

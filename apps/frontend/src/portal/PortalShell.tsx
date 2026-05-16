@@ -1,0 +1,164 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Navigate, NavLink, Route, Routes, useLocation, useParams } from 'react-router-dom';
+import { portalApi } from './api';
+import { portalSessionStore } from './auth';
+import type { PortalMe, PortalSessionData } from './types';
+import { PortalAgendaPage } from './pages/PortalAgendaPage';
+import { PortalLoginPage } from './pages/PortalLoginPage';
+import { PortalCertificateEvaluationPage } from './pages/PortalCertificateEvaluationPage';
+import { PortalCertificatesPage } from './pages/PortalCertificatesPage';
+import { PortalPlanningPage } from './pages/PortalPlanningPage';
+import { PortalTicketsPage } from './pages/PortalTicketsPage';
+import prymeiraHorizontalLogo from '../assets/prymeira-horizontal.svg';
+
+export function PortalShell() {
+  const { slug = '' } = useParams();
+  const location = useLocation();
+  const [session, setSession] = useState<PortalSessionData | null>(() => portalSessionStore.read(slug));
+  const [profile, setProfile] = useState<PortalMe | null>(null);
+  const [portalBrandCompanyName, setPortalBrandCompanyName] = useState<string>('');
+  const [authError, setAuthError] = useState('');
+
+  useEffect(() => {
+    setSession(portalSessionStore.read(slug));
+    setProfile(null);
+    setPortalBrandCompanyName('');
+    setAuthError('');
+  }, [slug]);
+
+  useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+    portalApi.authBranding(slug)
+      .then((response) => {
+        if (cancelled) return;
+        setPortalBrandCompanyName(response.company_name?.trim() || '');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPortalBrandCompanyName('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
+  const clearSession = useCallback(() => {
+    portalSessionStore.clear(slug);
+    setSession(null);
+    setProfile(null);
+  }, [slug]);
+
+  const apiClient = useMemo(() => {
+    if (!session?.token) return null;
+    return portalApi.createAuthedClient(session.token, clearSession);
+  }, [session?.token, clearSession]);
+
+  useEffect(() => {
+    if (!apiClient) return;
+    let mounted = true;
+    apiClient.me()
+      .then((response) => {
+        if (!mounted) return;
+        setProfile(response);
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        setAuthError(error instanceof Error ? error.message : 'Falha ao validar sessão.');
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [apiClient]);
+
+  async function handleLogin(payload: { username: string; password: string }) {
+    const result = await portalApi.login({
+      slug,
+      username: payload.username,
+      password: payload.password
+    });
+    const nextSession = { token: result.token, expires_at: result.expires_at, is_internal: result.is_internal };
+    portalSessionStore.save(slug, nextSession);
+    setSession(nextSession);
+    setAuthError('');
+    return true;
+  }
+
+  if (!slug) {
+    return <p className="error">Slug do portal não informado.</p>;
+  }
+
+  if (!session || !apiClient) {
+    return <PortalLoginPage companyName={portalBrandCompanyName || null} onSubmit={handleLogin} />;
+  }
+
+  const isEvaluationRoute = /\/certificados\/[^/]+\/avaliacao\/?$/.test(location.pathname);
+
+  if (isEvaluationRoute) {
+    return (
+      <Routes>
+        <Route path="certificados/:certificateId/avaliacao" element={<PortalCertificateEvaluationPage api={apiClient} />} />
+        <Route path="*" element={<Navigate to="certificados" replace />} />
+      </Routes>
+    );
+  }
+
+  return (
+    <div className="portal-shell">
+      <aside className="portal-sidebar">
+        <div className="portal-sidebar-head">
+          <div className="portal-brand">
+            <img src={prymeiraHorizontalLogo} alt="Prymeira" className="portal-brand-image" />
+            <small>Portal do Cliente</small>
+          </div>
+          <p className="portal-sidebar-caption">
+            Central de operação do seu time com visão clara de planejamento, agenda e suporte.
+          </p>
+        </div>
+        <nav className="portal-nav">
+          <NavLink to="planejamento" className={({ isActive }) => isActive ? 'is-active' : ''}>Planejamento</NavLink>
+          <NavLink to="agenda" className={({ isActive }) => isActive ? 'is-active' : ''}>Agenda</NavLink>
+          <NavLink to="certificados" className={({ isActive }) => isActive ? 'is-active' : ''}>Certificados</NavLink>
+          <NavLink to="suporte" className={({ isActive }) => isActive ? 'is-active' : ''}>Suporte</NavLink>
+        </nav>
+        <div className="portal-sidebar-footer">
+          <small>
+            {profile?.company_name || 'Sessão ativa'}
+          </small>
+          <button type="button" className="portal-logout-btn" onClick={clearSession}>Sair</button>
+        </div>
+      </aside>
+      <main className="portal-main">
+        <header className="portal-topbar">
+          <div className="portal-topbar-copy">
+            <span className="portal-topbar-kicker">Operação do cliente</span>
+            <strong>{profile?.company_name ?? 'Cliente'}</strong>
+          </div>
+          <div className="portal-topbar-meta">
+            <span className="portal-live-dot">Sessão segura ativa</span>
+          </div>
+        </header>
+        {authError ? <p className="error">{authError}</p> : null}
+        <Routes>
+          <Route index element={<Navigate to="agenda" replace />} />
+          <Route path="planejamento" element={<PortalPlanningPage api={apiClient} isInternal={Boolean(profile?.is_internal)} />} />
+          <Route path="agenda" element={<PortalAgendaPage api={apiClient} isInternal={Boolean(profile?.is_internal)} />} />
+          <Route path="certificados" element={<PortalCertificatesPage api={apiClient} sessionToken={session.token} />} />
+          <Route path="certificados/:certificateId/avaliacao" element={<PortalCertificateEvaluationPage api={apiClient} />} />
+          <Route
+            path="suporte"
+            element={
+              <PortalTicketsPage
+                api={apiClient}
+                isInternal={Boolean(profile?.is_internal)}
+                sessionToken={session.token}
+              />
+            }
+          />
+          <Route path="chamados" element={<Navigate to="../suporte" replace />} />
+          <Route path="*" element={<Navigate to="" replace />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}

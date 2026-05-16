@@ -1,0 +1,74 @@
+/* apps/frontend/src/shared/components/DataTable.css */
+.data-table-shared {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.data-table-shared th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-soft);
+  white-space: nowrap;
+}
+
+.data-table-shared th[data-align="right"] { text-align: right; }
+.data-table-shared th[data-align="center"] { text-align: center; }
+
+.data-table-shared th button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.data-table-shared th button:hover { color: var(--text-secondary); }
+
+.data-table-shared th button svg {
+  color: var(--text-soft);
+  flex-shrink: 0;
+}
+
+.data-table-shared th button[data-active="true"] svg {
+  color: var(--text-primary);
+}
+
+.data-table-shared td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.data-table-shared td[data-align="right"] { text-align: right; }
+.data-table-shared td[data-align="center"] { text-align: center; }
+
+.data-table-shared tbody tr:hover td {
+  background: var(--surface-soft);
+}
+
+.data-table-shared tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table-shared__empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: var(--space-8);
+  font-size: 13px;
+}
