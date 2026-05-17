@@ -74,9 +74,9 @@ vi.mock('../../services/api', () => ({
           products: [
             {
               product_key: 'financeiro',
-              name: 'Financeiro',
-              description: 'Financeiro',
-              app_url: 'https://margem.prymeiradigital.com.br',
+              name: 'Fluvia',
+              description: 'Gestão financeira',
+              app_url: 'https://fluvia.prymeiradigital.com.br',
               marketing_url: null,
               status: 'active',
               allowed: true,

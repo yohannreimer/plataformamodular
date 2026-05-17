@@ -49,6 +49,7 @@ jobs:
           push: true
           build-args: |
             VITE_API_BASE_URL=/api
+            VITE_PRYMEIRA_HUB_URL=https://hub.prymeiradigital.com.br
           tags: |
             ghcr.io/${{ env.OWNER_LC }}/orquestrador-frontend:latest
             ghcr.io/${{ env.OWNER_LC }}/orquestrador-frontend:${{ github.sha }}

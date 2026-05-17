@@ -18,6 +18,8 @@ RUN npm --workspace apps/frontend run build
 FROM nginx:1.27-alpine
 
 COPY apps/frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY apps/frontend/docker-entrypoint.d/40-prymeira-runtime-config.sh /docker-entrypoint.d/40-prymeira-runtime-config.sh
 COPY --from=build /app/apps/frontend/dist /usr/share/nginx/html
+RUN chmod +x /docker-entrypoint.d/40-prymeira-runtime-config.sh
 
 EXPOSE 80

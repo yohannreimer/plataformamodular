@@ -23,7 +23,7 @@ describe('accountAccessStore', () => {
       products: [
         {
           product_key: 'financeiro',
-          name: 'Financeiro',
+          name: 'Fluvia',
           description: null,
           app_url: 'http://localhost:5173/m/financeiro',
           marketing_url: null,

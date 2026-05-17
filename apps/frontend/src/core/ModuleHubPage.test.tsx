@@ -30,7 +30,7 @@ const allProductsAllowed: AccountAccessState = {
   products: [
     {
       product_key: 'orquestrador',
-      name: 'Gestão Técnica',
+      name: 'Velio',
       description: null,
       app_url: 'http://localhost:5173/m/tecnico',
       marketing_url: null,
@@ -43,7 +43,7 @@ const allProductsAllowed: AccountAccessState = {
     },
     {
       product_key: 'financeiro',
-      name: 'Financeiro',
+      name: 'Fluvia',
       description: null,
       app_url: 'http://localhost:5173/m/financeiro',
       marketing_url: null,
@@ -69,8 +69,8 @@ test('renders module cards with direct entry links', () => {
   );
 
   expect(screen.getByRole('heading', { name: 'Seus módulos ativos' })).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: /abrir financeiro/i })).toHaveAttribute('href', '/m/financeiro');
-  expect(screen.getByRole('link', { name: /abrir gestão técnica/i })).toHaveAttribute('href', '/m/tecnico');
+  expect(screen.getByRole('link', { name: /abrir fluvia/i })).toHaveAttribute('href', '/m/financeiro');
+  expect(screen.getByRole('link', { name: /abrir velio/i })).toHaveAttribute('href', '/m/tecnico');
 });
 
 test('renders only modules available to the user', () => {
@@ -84,6 +84,6 @@ test('renders only modules available to the user', () => {
     </MemoryRouter>
   );
 
-  expect(screen.queryByRole('link', { name: /abrir financeiro/i })).not.toBeInTheDocument();
-  expect(screen.getByRole('link', { name: /abrir gestão técnica/i })).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: /abrir fluvia/i })).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: /abrir velio/i })).toBeInTheDocument();
 });

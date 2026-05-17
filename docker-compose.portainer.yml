@@ -1,33 +1,75 @@
+version: "3.7"
+
 services:
-  backend:
-    image: ghcr.io/${GHCR_OWNER}/orquestrador-backend:${IMAGE_TAG:-latest}
+  plataforma_modular_backend:
+    image: ghcr.io/${GHCR_OWNER:-yohannreimer}/orquestrador-backend:${IMAGE_TAG:-latest}
     environment:
       NODE_ENV: production
       PORT: "4000"
       APP_DB_PATH: /app/apps/backend/data/app.db
       SEED_FINANCE_DEMO: "false"
-    volumes:
-      - orquestrador_data:/app/apps/backend/data
+      PRYMEIRA_ACCOUNT_API_URL: https://hub.prymeiradigital.com.br/api
+      PRYMEIRA_BOOTSTRAP_ADMIN_EMAILS: ${PRYMEIRA_BOOTSTRAP_ADMIN_EMAILS:-yohannreimer20@gmail.com}
     networks:
-      - orquestrador_swarm_net
+      plataforma_modular_internal:
+        aliases:
+          - backend
+    volumes:
+      - plataforma_modular_data:/app/apps/backend/data
     deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+          - node.hostname == manager01
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
       restart_policy:
         condition: on-failure
 
-  frontend:
-    image: ghcr.io/${GHCR_OWNER}/orquestrador-frontend:${IMAGE_TAG:-latest}
-    ports:
-      - "8080:80"
+  plataforma_modular_frontend:
+    image: ghcr.io/${GHCR_OWNER:-yohannreimer}/orquestrador-frontend:${IMAGE_TAG:-latest}
+    environment:
+      VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY}
+      CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
+      VITE_PRYMEIRA_HUB_URL: https://hub.prymeiradigital.com.br
     networks:
-      - orquestrador_swarm_net
+      - network_swarm_public
+      - plataforma_modular_internal
     deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+          - node.hostname == manager01
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
       restart_policy:
         condition: on-failure
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=network_swarm_public
+        - traefik.http.routers.fluvia.rule=Host(`fluvia.prymeiradigital.com.br`)
+        - traefik.http.routers.fluvia.entrypoints=websecure
+        - traefik.http.routers.fluvia.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.fluvia.service=plataforma-modular
+        - traefik.http.routers.velio.rule=Host(`velio.prymeiradigital.com.br`)
+        - traefik.http.routers.velio.entrypoints=websecure
+        - traefik.http.routers.velio.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.velio.service=plataforma-modular
+        - traefik.http.services.plataforma-modular.loadbalancer.server.port=80
 
 volumes:
-  orquestrador_data:
+  plataforma_modular_data:
 
 networks:
-  orquestrador_swarm_net:
+  network_swarm_public:
+    external: true
+  plataforma_modular_internal:
     driver: overlay
-    attachable: true

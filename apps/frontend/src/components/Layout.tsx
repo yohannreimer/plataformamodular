@@ -129,7 +129,7 @@ export function Layout({ children, loggedUser, navItems, onLogout }: LayoutProps
       <aside className="sidebar">
         <Link to="/app" className="logo">
           <img className="logo-brand-image" src={prymeiraLogo} alt="Prymeira" />
-          <small>Gestão Técnica</small>
+          <small>Velio</small>
         </Link>
         <nav>
           {navItems.map((item) => (

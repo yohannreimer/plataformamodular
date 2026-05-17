@@ -3,8 +3,8 @@ import prymeiraLogo from '../assets/prymeira-logo.png';
 import { PRYMEIRA_HUB_URL } from '../config/urls';
 
 const PRODUCT_LABELS: Record<string, string> = {
-  orquestrador: 'Gestão Técnica',
-  financeiro: 'Financeiro'
+  orquestrador: 'Velio',
+  financeiro: 'Fluvia'
 };
 
 type NoProductAccessPageProps = {
