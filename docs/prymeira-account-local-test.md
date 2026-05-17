@@ -61,3 +61,21 @@ npm --workspace apps/frontend run dev
 - A rota `/m/tecnico` bloqueia se `orquestrador` não estiver liberado.
 - A rota `/m/financeiro` bloqueia se `financeiro` não estiver liberado.
 - As APIs do backend também retornam bloqueio sem `X-Clerk-Token` ou sem entitlement.
+
+## Multi-tenant
+
+No primeiro login, a Account API cria um workspace padrão para o cliente e a Plataforma Modular mapeia esse workspace para uma `organization` local.
+
+Para conferir o isolamento:
+
+```bash
+npx tsx --test apps/backend/src/orquestradorTenant.test.ts
+npx tsx --test apps/backend/src/finance/finance.test.ts --test-name-pattern "missing organization"
+```
+
+Resultado esperado:
+
+- usuário sem `organization_id` recebe `403` com `reason: "missing_tenant"`;
+- usuário da organização A cria cliente no Orquestrador;
+- usuário da organização B não vê esse cliente na listagem;
+- usuário da organização B recebe `404` ao tentar abrir o cliente da organização A por URL direta.
