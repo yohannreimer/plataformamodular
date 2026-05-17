@@ -54,6 +54,38 @@ Object.defineProperty(window, 'sessionStorage', {
 
 vi.mock('../../services/api', () => ({
   api: {
+    accountBootstrap: vi.fn().mockImplementation(async () => {
+      const raw = window.localStorage.getItem(INTERNAL_AUTH_STORAGE_KEY);
+      const storedSession = raw ? (JSON.parse(raw) as InternalSessionData) : mockAuth.session;
+      return {
+        session: storedSession,
+        account: {
+          customer: {
+            id: 'customer-finance',
+            email: storedSession.user.username,
+            name: storedSession.user.display_name
+          },
+          workspace: {
+            id: 'workspace-finance',
+            name: 'Prymeira',
+            type: 'individual',
+            role: 'owner'
+          },
+          products: [
+            {
+              product_key: 'financeiro',
+              name: 'Financeiro',
+              description: 'Financeiro',
+              app_url: 'https://margem.prymeiradigital.com.br',
+              marketing_url: null,
+              status: 'active',
+              allowed: true,
+              reason: 'active_entitlement'
+            }
+          ]
+        }
+      };
+    }),
     internalMe: vi.fn().mockImplementation(async () => {
       const raw = window.localStorage.getItem(INTERNAL_AUTH_STORAGE_KEY);
       const storedSession = raw ? (JSON.parse(raw) as InternalSessionData) : mockAuth.session;
@@ -161,10 +193,13 @@ test('finance workspace shows the approved ERP sitemap and no counterparty copy 
   expect(within(sidebar).getByRole('link', { name: 'Cadastros' })).toBeInTheDocument();
   expect(within(sidebar).getByRole('link', { name: 'Simulação' })).toBeInTheDocument();
   expect(within(sidebar).getByRole('link', { name: 'Avançado' })).toBeInTheDocument();
-  expect(within(sidebar).getByRole('link', { name: 'Voltar aos módulos' })).toHaveAttribute('href', '/app');
+  expect(within(sidebar).getByRole('link', { name: /Voltar ao Hub/ })).toHaveAttribute(
+    'href',
+    'https://hub.prymeiradigital.com.br'
+  );
   expect(within(sidebar).queryByText(/contraparte/i)).not.toBeInTheDocument();
-  expect(within(sidebar).getAllByText('Financeiro').length).toBeGreaterThan(0);
-  expect(within(sidebar).getByText('ERP Prymeira')).toBeInTheDocument();
+  expect(within(sidebar).getAllByText(/Financeiro/).length).toBeGreaterThan(0);
+  expect(within(sidebar).getByText('ERP Financeiro')).toBeInTheDocument();
   expect(within(sidebar).queryByText(/ERP financeiro da empresa logada/i)).not.toBeInTheDocument();
   expect(within(sidebar).queryByText(/Contexto da organização/i)).not.toBeInTheDocument();
   expect(within(sidebar).queryByText(/BRL/i)).not.toBeInTheDocument();
@@ -192,6 +227,9 @@ test('finance workspace keeps footer informative for finance-only users', async 
   );
 
   const sidebar = await screen.findByRole('complementary', { name: 'Navegação financeira' });
-  expect(within(sidebar).getByRole('link', { name: 'Voltar aos módulos' })).toHaveAttribute('href', '/app');
+  expect(within(sidebar).getByRole('link', { name: /Voltar ao Hub/ })).toHaveAttribute(
+    'href',
+    'https://hub.prymeiradigital.com.br'
+  );
   expect(within(sidebar).getByLabelText('Usuário financeiro ativo')).toHaveTextContent('Financeiro');
 });

@@ -4,6 +4,7 @@ import type { PropsWithChildren } from 'react';
 import prymeiraLogo from '../assets/prymeira-logo.png';
 import type { AppNavItem } from '../auth/navigation';
 import { TECHNICAL_BASE_PATH } from '../core/modules';
+import { PRYMEIRA_HUB_URL } from '../config/urls';
 
 type LayoutProps = PropsWithChildren<{
   loggedUser?: string;
@@ -151,7 +152,7 @@ export function Layout({ children, loggedUser, navItems, onLogout }: LayoutProps
         </nav>
         <div className="sidebar-auth">
           <small>Usuário: {loggedUser ?? 'logado'}</small>
-          <Link to="/app" className="sidebar-back">← Voltar aos módulos</Link>
+          <a href={PRYMEIRA_HUB_URL} className="sidebar-back">← Voltar ao Hub</a>
           {onLogout ? (
             <button type="button" onClick={onLogout}>Sair</button>
           ) : null}

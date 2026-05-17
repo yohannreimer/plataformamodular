@@ -1,6 +1,6 @@
-import { Link } from 'react-router-dom';
 import { Lock, ArrowLeft } from 'lucide-react';
 import prymeiraLogo from '../assets/prymeira-logo.png';
+import { PRYMEIRA_HUB_URL } from '../config/urls';
 
 const PRODUCT_LABELS: Record<string, string> = {
   orquestrador: 'Gestão Técnica',
@@ -30,10 +30,10 @@ export function NoProductAccessPage({ productKey, onLogout }: NoProductAccessPag
         <p>
           Sua conta está autenticada, mas a Prymeira Account ainda não liberou esse produto para este usuário.
         </p>
-        <Link to="/app" className="no-access-page__back">
+        <a href={PRYMEIRA_HUB_URL} className="no-access-page__back">
           <ArrowLeft size={15} strokeWidth={1.9} />
-          Voltar ao hub
-        </Link>
+          Voltar ao Hub
+        </a>
       </main>
     </div>
   );

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { internalSessionStore } from '../../auth/session';
+import { PRYMEIRA_HUB_URL } from '../../config/urls';
 import type { FinanceContext } from '../api';
 import prymeiraLogo from '../../assets/prymeira-logo.png';
 
@@ -85,8 +86,8 @@ export function FinanceSidebar({ context: _context, onLogout }: FinanceSidebarPr
       </nav>
 
       <div className="sidebar-auth">
-        <small>Usuário: {userLabel}</small>
-        <Link to="/app" className="sidebar-back">← Voltar aos módulos</Link>
+        <small aria-label="Usuário financeiro ativo">Usuário: {userLabel}</small>
+        <a href={PRYMEIRA_HUB_URL} className="sidebar-back">← Voltar ao Hub</a>
         {onLogout ? (
           <button type="button" onClick={onLogout}>Sair</button>
         ) : null}
