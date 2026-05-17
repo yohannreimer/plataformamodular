@@ -111,6 +111,15 @@ function hasColumn(table: string, column: string) {
   return readTableColumns(table).some((item) => item.name === column);
 }
 
+function hasTable(table: string) {
+  const row = db.prepare(`
+    select name
+    from sqlite_master
+    where type = 'table' and name = ?
+  `).get(table) as { name: string } | undefined;
+  return Boolean(row);
+}
+
 function hasForeignKey(table: string, targetTable: string, from: string, to: string) {
   const foreignKeys = db.prepare(`pragma foreign_key_list(${table})`).all() as Array<{
     table: string;
@@ -155,6 +164,29 @@ function hashInternalPasswordSeed(password: string): string {
 }
 
 const DEFAULT_ORGANIZATION_ID = 'org-holand';
+
+const ORQUESTRADOR_TENANT_TABLES = [
+  'company',
+  'technician',
+  'cohort',
+  'company_module_progress',
+  'company_module_activation',
+  'cohort_module_block',
+  'cohort_schedule_day',
+  'cohort_allocation',
+  'cohort_participant',
+  'cohort_participant_module',
+  'company_optional_progress',
+  'company_license',
+  'license_program',
+  'calendar_activity',
+  'planning_workspace',
+  'planning_workspace_client',
+  'planning_cohort',
+  'planning_encounter',
+  'implementation_kanban_card',
+  'recruitment_candidate'
+] as const;
 
 export function initDb() {
   db.pragma('journal_mode = WAL');
@@ -1426,6 +1458,13 @@ export function initDb() {
   ensureColumn('portal_client', 'module_status_overrides_json', "module_status_overrides_json text not null default '{}'");
   ensureColumn('portal_client', 'module_delivery_mode_overrides_json', "module_delivery_mode_overrides_json text not null default '{}'");
   ensureColumn('organization', 'account_workspace_id', 'account_workspace_id text');
+  for (const table of ORQUESTRADOR_TENANT_TABLES) {
+    if (!hasTable(table)) {
+      continue;
+    }
+    ensureColumn(table, 'organization_id', 'organization_id text');
+    db.prepare(`update ${table} set organization_id = ? where organization_id is null`).run(DEFAULT_ORGANIZATION_ID);
+  }
   ensureColumn('financial_transaction', 'is_deleted', 'is_deleted integer not null default 0');
   ensureColumn(
     'financial_account',
@@ -1512,6 +1551,186 @@ export function initDb() {
   ensureColumn('internal_user', 'last_login_at', 'last_login_at text');
   ensureColumn('internal_user', 'preferences_json', "preferences_json text not null default '{}'");
   ensureColumn('technician', 'calendar_color', 'calendar_color text');
+
+  const companyNeedsTenantRebuild = !hasCompositeUniqueIndex('company', ['organization_id', 'name'])
+    || readTableColumns('company').find((column) => column.name === 'organization_id')?.notnull !== 1;
+  const technicianNeedsTenantRebuild = !hasCompositeUniqueIndex('technician', ['organization_id', 'name'])
+    || readTableColumns('technician').find((column) => column.name === 'organization_id')?.notnull !== 1;
+  const cohortNeedsTenantRebuild = !hasCompositeUniqueIndex('cohort', ['organization_id', 'code'])
+    || readTableColumns('cohort').find((column) => column.name === 'organization_id')?.notnull !== 1;
+  const licenseProgramNeedsTenantRebuild = !hasCompositeUniqueIndex('license_program', ['organization_id', 'name'])
+    || readTableColumns('license_program').find((column) => column.name === 'organization_id')?.notnull !== 1;
+
+  if (companyNeedsTenantRebuild || technicianNeedsTenantRebuild || cohortNeedsTenantRebuild || licenseProgramNeedsTenantRebuild) {
+    db.exec('pragma foreign_keys = off');
+    try {
+      if (companyNeedsTenantRebuild) {
+        db.exec(`
+          create table company_new (
+            id text primary key,
+            organization_id text not null default 'org-holand',
+            name text not null,
+            status text not null default 'Em_treinamento',
+            notes text,
+            priority integer not null default 0,
+            priority_level text not null default 'Normal',
+            contact_name text,
+            contact_phone text,
+            contact_email text,
+            modality text not null default 'Turma_Online',
+            is_third_party integer not null default 0,
+            unique(organization_id, name),
+            unique(organization_id, id),
+            foreign key(organization_id) references organization(id) on delete cascade
+          );
+        `);
+        db.exec(`
+          insert into company_new (
+            id, organization_id, name, status, notes, priority, priority_level,
+            contact_name, contact_phone, contact_email, modality, is_third_party
+          )
+          select
+            id,
+            coalesce(organization_id, '${DEFAULT_ORGANIZATION_ID}'),
+            name,
+            coalesce(status, 'Em_treinamento'),
+            notes,
+            coalesce(priority, 0),
+            coalesce(priority_level, 'Normal'),
+            contact_name,
+            contact_phone,
+            contact_email,
+            coalesce(modality, 'Turma_Online'),
+            coalesce(is_third_party, 0)
+          from company;
+        `);
+        db.exec('drop table company;');
+        db.exec('alter table company_new rename to company;');
+      }
+
+      if (technicianNeedsTenantRebuild) {
+        db.exec(`
+          create table technician_new (
+            id text primary key,
+            organization_id text not null default 'org-holand',
+            name text not null,
+            availability_notes text,
+            hourly_cost real,
+            calendar_color text,
+            unique(organization_id, name),
+            unique(organization_id, id),
+            foreign key(organization_id) references organization(id) on delete cascade
+          );
+        `);
+        db.exec(`
+          insert into technician_new (
+            id, organization_id, name, availability_notes, hourly_cost, calendar_color
+          )
+          select
+            id,
+            coalesce(organization_id, '${DEFAULT_ORGANIZATION_ID}'),
+            name,
+            availability_notes,
+            hourly_cost,
+            calendar_color
+          from technician;
+        `);
+        db.exec('drop table technician;');
+        db.exec('alter table technician_new rename to technician;');
+      }
+
+      if (cohortNeedsTenantRebuild) {
+        db.exec(`
+          create table cohort_new (
+            id text primary key,
+            organization_id text not null default 'org-holand',
+            code text not null,
+            name text not null,
+            start_date text not null,
+            technician_id text,
+            status text not null default 'Planejada',
+            capacity_companies integer not null,
+            period text not null default 'Integral',
+            start_time text,
+            end_time text,
+            delivery_mode text not null default 'Online',
+            notes text,
+            planning_workspace_id text,
+            planning_cohort_id text,
+            unique(organization_id, code),
+            unique(organization_id, id),
+            foreign key(organization_id) references organization(id) on delete cascade,
+            foreign key(technician_id) references technician(id) on delete set null,
+            foreign key(planning_workspace_id) references planning_workspace(id) on delete set null,
+            foreign key(planning_cohort_id) references planning_cohort(id) on delete set null
+          );
+        `);
+        db.exec(`
+          insert into cohort_new (
+            id, organization_id, code, name, start_date, technician_id, status,
+            capacity_companies, period, start_time, end_time, delivery_mode, notes,
+            planning_workspace_id, planning_cohort_id
+          )
+          select
+            id,
+            coalesce(organization_id, '${DEFAULT_ORGANIZATION_ID}'),
+            code,
+            name,
+            start_date,
+            technician_id,
+            coalesce(status, 'Planejada'),
+            capacity_companies,
+            coalesce(period, 'Integral'),
+            start_time,
+            end_time,
+            coalesce(delivery_mode, 'Online'),
+            notes,
+            planning_workspace_id,
+            planning_cohort_id
+          from cohort;
+        `);
+        db.exec('drop table cohort;');
+        db.exec('alter table cohort_new rename to cohort;');
+      }
+
+      if (licenseProgramNeedsTenantRebuild) {
+        db.exec(`
+          create table license_program_new (
+            id text primary key,
+            organization_id text not null default 'org-holand',
+            name text not null,
+            topsolid_kind text,
+            topsolid_code text,
+            notes text,
+            created_at text not null,
+            updated_at text not null,
+            unique(organization_id, name),
+            unique(organization_id, id),
+            foreign key(organization_id) references organization(id) on delete cascade
+          );
+        `);
+        db.exec(`
+          insert into license_program_new (
+            id, organization_id, name, topsolid_kind, topsolid_code, notes, created_at, updated_at
+          )
+          select
+            id,
+            coalesce(organization_id, '${DEFAULT_ORGANIZATION_ID}'),
+            name,
+            topsolid_kind,
+            topsolid_code,
+            notes,
+            created_at,
+            updated_at
+          from license_program;
+        `);
+        db.exec('drop table license_program;');
+        db.exec('alter table license_program_new rename to license_program;');
+      }
+    } finally {
+      db.exec('pragma foreign_keys = on');
+    }
+  }
 
   const financialAccountColumns = readTableColumns('financial_account');
   const financialCategoryColumns = readTableColumns('financial_category');
@@ -2274,6 +2493,12 @@ export function initDb() {
     create index if not exists idx_planning_encounter_workspace_date on planning_encounter(workspace_id, day_date);
     create index if not exists idx_planning_encounter_technician_date on planning_encounter(technician_id, day_date);
     create index if not exists idx_cohort_planning_links on cohort(planning_workspace_id, planning_cohort_id);
+    create index if not exists idx_company_org_status on company(organization_id, status);
+    create index if not exists idx_technician_org_name on technician(organization_id, name);
+    create index if not exists idx_cohort_org_start on cohort(organization_id, start_date);
+    create index if not exists idx_calendar_activity_org_start on calendar_activity(organization_id, start_date);
+    create index if not exists idx_planning_workspace_org_status on planning_workspace(organization_id, status, updated_at desc);
+    create index if not exists idx_company_license_org_company on company_license(organization_id, company_id);
     create index if not exists idx_internal_session_user on internal_session(internal_user_id);
     create index if not exists idx_internal_session_expires on internal_session(expires_at);
     create index if not exists idx_internal_audit_created on internal_audit_log(created_at desc);
