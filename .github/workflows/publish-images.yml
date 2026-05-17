@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - codex/**
   workflow_dispatch:
 
 permissions:
@@ -38,8 +39,8 @@ jobs:
           file: apps/backend/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ env.OWNER_LC }}/orquestrador-backend:latest
-            ghcr.io/${{ env.OWNER_LC }}/orquestrador-backend:${{ github.sha }}
+            ghcr.io/${{ env.OWNER_LC }}/plataforma-modular-backend:latest
+            ghcr.io/${{ env.OWNER_LC }}/plataforma-modular-backend:${{ github.sha }}
 
       - name: Build and push frontend
         uses: docker/build-push-action@v6
@@ -51,5 +52,5 @@ jobs:
             VITE_API_BASE_URL=/api
             VITE_PRYMEIRA_HUB_URL=https://hub.prymeiradigital.com.br
           tags: |
-            ghcr.io/${{ env.OWNER_LC }}/orquestrador-frontend:latest
-            ghcr.io/${{ env.OWNER_LC }}/orquestrador-frontend:${{ github.sha }}
+            ghcr.io/${{ env.OWNER_LC }}/plataforma-modular-frontend:latest
+            ghcr.io/${{ env.OWNER_LC }}/plataforma-modular-frontend:${{ github.sha }}
