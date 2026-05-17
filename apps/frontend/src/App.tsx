@@ -54,6 +54,7 @@ import {
   TECHNICAL_BASE_PATH
 } from './core/modules';
 import { NoProductAccessPage } from './pages/NoProductAccessPage';
+import { productEntryPathForHostname } from './config/urls';
 const INTERNAL_TAB_INITIALIZED_KEY = 'orquestrador_internal_tab_initialized_v1';
 type KanbanAlertCounts = {
   implementation: number;
@@ -281,6 +282,7 @@ function InternalApp() {
   });
   const navigate = useNavigate();
   const location = useLocation();
+  const productHostEntryPath = productEntryPathForHostname(window.location.hostname);
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -383,7 +385,7 @@ function InternalApp() {
         setAccountAccess(response.account);
         window.sessionStorage.setItem(INTERNAL_TAB_INITIALIZED_KEY, '1');
         if (location.pathname === '/') {
-          navigate('/app', { replace: true });
+          navigate(productHostEntryPath ?? '/app', { replace: true });
         }
       })
       .catch((error) => {
@@ -402,7 +404,7 @@ function InternalApp() {
     return () => {
       cancelled = true;
     };
-  }, [clerkLoaded, isSignedIn, clerkUser, getToken, location.pathname, navigate]);
+  }, [clerkLoaded, isSignedIn, clerkUser, getToken, location.pathname, navigate, productHostEntryPath]);
 
   function handleLogout() {
     api.internalLogout().catch(() => null).finally(() => {
@@ -476,9 +478,9 @@ function InternalApp() {
     if (tabInitialized) return;
     window.sessionStorage.setItem(INTERNAL_TAB_INITIALIZED_KEY, '1');
     if (location.pathname === '/') {
-      navigate('/app', { replace: true });
+      navigate(productHostEntryPath ?? '/app', { replace: true });
     }
-  }, [session, user, location.pathname, navigate]);
+  }, [session, user, location.pathname, navigate, productHostEntryPath]);
 
   if (loadingSession) {
     return <p style={{ padding: '24px' }}>Carregando sessão...</p>;
@@ -506,6 +508,10 @@ function InternalApp() {
 
   if (legacyTechnicalTarget) {
     return <Navigate to={legacyTechnicalTarget} replace />;
+  }
+
+  if (location.pathname === '/' && productHostEntryPath) {
+    return <Navigate to={productHostEntryPath} replace />;
   }
 
   if (isHubRoute) {
