@@ -1,6 +1,7 @@
-import type { Express } from 'express';
+import type { Express, Response } from 'express';
 import { z } from 'zod';
 import { db, nowDateIso, uuid } from '../db.js';
+import { readInternalAuthContext } from '../internalAuth.js';
 import {
   findPlanningEncounterConflicts,
   publishPlanningWorkspace,
@@ -110,6 +111,18 @@ type PlanningEncounterConflictCheckRow = {
   published_cohort_id: string | null;
 };
 
+function readPlanningOrganizationId(res: Response) {
+  return readInternalAuthContext(res)?.organization_id ?? null;
+}
+
+function planningTenantClause(alias: string, organizationId: string | null) {
+  return organizationId ? ` and ${alias}.organization_id = ?` : '';
+}
+
+function planningTenantBind(organizationId: string | null): string[] {
+  return organizationId ? [organizationId] : [];
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -187,8 +200,13 @@ function readAvailableModuleIdsForClient(companyId: string, workspaceId: string)
   return rows.map((row) => row.id);
 }
 
-function readWorkspace(workspaceId: string): WorkspaceReadModel | null {
-  const workspace = db.prepare('select * from planning_workspace where id = ?').get(workspaceId);
+function readWorkspace(workspaceId: string, organizationId: string | null = null): WorkspaceReadModel | null {
+  const workspace = db.prepare(`
+    select *
+    from planning_workspace
+    where id = ?
+      ${planningTenantClause('planning_workspace', organizationId)}
+  `).get(workspaceId, ...planningTenantBind(organizationId));
   if (!workspace) return null;
 
   const clients = db.prepare(`
@@ -196,8 +214,9 @@ function readWorkspace(workspaceId: string): WorkspaceReadModel | null {
     from planning_workspace_client pwc
     join company c on c.id = pwc.company_id
     where pwc.workspace_id = ?
+      ${planningTenantClause('pwc', organizationId)}
     order by pwc.priority desc, c.name asc
-  `).all(workspaceId) as Array<Record<string, unknown> & { company_id: string }>;
+  `).all(workspaceId, ...planningTenantBind(organizationId)) as Array<Record<string, unknown> & { company_id: string }>;
 
   const cohorts = db.prepare(`
     select pc.*, c.name as company_name, mt.code as module_code, mt.name as module_name, t.name as technician_name
@@ -206,16 +225,18 @@ function readWorkspace(workspaceId: string): WorkspaceReadModel | null {
     join module_template mt on mt.id = pc.module_id
     left join technician t on t.id = pc.technician_id
     where pc.workspace_id = ?
+      ${planningTenantClause('pc', organizationId)}
     order by c.name asc, pc.created_at asc, pc.id asc
-  `).all(workspaceId) as Array<{ id: string } & Record<string, unknown>>;
+  `).all(workspaceId, ...planningTenantBind(organizationId)) as Array<{ id: string } & Record<string, unknown>>;
 
   const encounterRows = db.prepare(`
     select pe.*, t.name as technician_name
     from planning_encounter pe
     left join technician t on t.id = pe.technician_id
     where pe.workspace_id = ?
+      ${planningTenantClause('pe', organizationId)}
     order by pe.day_date asc, pe.start_time asc, pe.encounter_index asc
-  `).all(workspaceId) as PlanningEncounterReadRow[];
+  `).all(workspaceId, ...planningTenantBind(organizationId)) as PlanningEncounterReadRow[];
 
   return {
     workspace,
@@ -238,18 +259,21 @@ export function registerPlanningRoutes(app: Express) {
   });
 
   app.get('/planning/workspaces', (_req, res) => {
+    const organizationId = readPlanningOrganizationId(res);
     const rows = db.prepare(`
       select pw.*,
         (select count(*) from planning_workspace_client pwc where pwc.workspace_id = pw.id) as client_count,
         (select count(*) from planning_encounter pe where pe.workspace_id = pw.id and pe.status <> 'Cancelado') as encounter_count
       from planning_workspace pw
       where pw.status <> 'Arquivado'
+        ${planningTenantClause('pw', organizationId)}
       order by pw.updated_at desc
-    `).all();
+    `).all(...planningTenantBind(organizationId));
     return res.json({ workspaces: rows });
   });
 
   app.post('/planning/workspaces', (req, res) => {
+    const organizationId = readPlanningOrganizationId(res);
     const parsed = createWorkspaceSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json(parsed.error.flatten());
 
@@ -257,36 +281,50 @@ export function registerPlanningRoutes(app: Express) {
     const now = nowDateIso();
     const workspaceId = uuid('pln');
     const uniqueCompanyIds = Array.from(new Set(payload.company_ids));
+    const missingCompany = uniqueCompanyIds.find((companyId) => !db.prepare(`
+      select id
+      from company
+      where id = ?
+        ${planningTenantClause('company', organizationId)}
+    `).get(companyId, ...planningTenantBind(organizationId)));
+    if (missingCompany) return res.status(404).json({ message: 'Cliente não encontrado.' });
 
     const tx = db.transaction(() => {
       db.prepare(`
-        insert into planning_workspace (id, name, status, mode, horizon_days, notes, created_at, updated_at)
-        values (?, ?, 'Rascunho', ?, ?, ?, ?, ?)
-      `).run(workspaceId, payload.name.trim(), payload.mode, payload.horizon_days, payload.notes ?? null, now, now);
+        insert into planning_workspace (id, organization_id, name, status, mode, horizon_days, notes, created_at, updated_at)
+        values (?, ?, ?, 'Rascunho', ?, ?, ?, ?, ?)
+      `).run(workspaceId, organizationId ?? 'org-holand', payload.name.trim(), payload.mode, payload.horizon_days, payload.notes ?? null, now, now);
 
       const insertClient = db.prepare(`
-        insert or ignore into planning_workspace_client (workspace_id, company_id, priority, created_at)
-        values (?, ?, 0, ?)
+        insert or ignore into planning_workspace_client (organization_id, workspace_id, company_id, priority, created_at)
+        values (?, ?, ?, 0, ?)
       `);
-      uniqueCompanyIds.forEach((companyId) => insertClient.run(workspaceId, companyId, now));
+      uniqueCompanyIds.forEach((companyId) => insertClient.run(organizationId ?? 'org-holand', workspaceId, companyId, now));
     });
 
     try {
       tx();
-      return res.status(201).json(readWorkspace(workspaceId));
+      return res.status(201).json(readWorkspace(workspaceId, organizationId));
     } catch (error) {
       return res.status(400).json({ message: 'Não foi possível criar planejamento.', detail: errorMessage(error) });
     }
   });
 
   app.get('/planning/workspaces/:workspaceId', (req, res) => {
-    const result = readWorkspace(req.params.workspaceId);
+    const organizationId = readPlanningOrganizationId(res);
+    const result = readWorkspace(req.params.workspaceId, organizationId);
     if (!result) return res.status(404).json({ message: 'Planejamento não encontrado.' });
     return res.json(result);
   });
 
   app.delete('/planning/workspaces/:workspaceId', (req, res) => {
-    const workspace = db.prepare('select id from planning_workspace where id = ?').get(req.params.workspaceId);
+    const organizationId = readPlanningOrganizationId(res);
+    const workspace = db.prepare(`
+      select id
+      from planning_workspace
+      where id = ?
+        ${planningTenantClause('planning_workspace', organizationId)}
+    `).get(req.params.workspaceId, ...planningTenantBind(organizationId));
     if (!workspace) return res.status(404).json({ message: 'Planejamento não encontrado.' });
 
     const now = nowDateIso();
@@ -295,49 +333,73 @@ export function registerPlanningRoutes(app: Express) {
       set status = 'Arquivado',
           updated_at = ?
       where id = ?
-    `).run(now, req.params.workspaceId);
+        ${planningTenantClause('planning_workspace', organizationId)}
+    `).run(now, req.params.workspaceId, ...planningTenantBind(organizationId));
 
     return res.json({ ok: true });
   });
 
   app.post('/planning/workspaces/:workspaceId/clients', (req, res) => {
+    const organizationId = readPlanningOrganizationId(res);
     const parsed = addWorkspaceClientsSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json(parsed.error.flatten());
 
-    const workspace = db.prepare('select id from planning_workspace where id = ?').get(req.params.workspaceId);
+    const workspace = db.prepare(`
+      select id
+      from planning_workspace
+      where id = ?
+        ${planningTenantClause('planning_workspace', organizationId)}
+    `).get(req.params.workspaceId, ...planningTenantBind(organizationId));
     if (!workspace) return res.status(404).json({ message: 'Planejamento não encontrado.' });
 
     const now = nowDateIso();
     const uniqueCompanyIds = Array.from(new Set(parsed.data.company_ids));
-    const missingCompany = uniqueCompanyIds.find((companyId) => !db.prepare('select id from company where id = ?').get(companyId));
+    const missingCompany = uniqueCompanyIds.find((companyId) => !db.prepare(`
+      select id
+      from company
+      where id = ?
+        ${planningTenantClause('company', organizationId)}
+    `).get(companyId, ...planningTenantBind(organizationId)));
     if (missingCompany) return res.status(404).json({ message: 'Cliente não encontrado.' });
 
     const tx = db.transaction(() => {
       const insertClient = db.prepare(`
-        insert or ignore into planning_workspace_client (workspace_id, company_id, priority, created_at)
-        values (?, ?, 0, ?)
+        insert or ignore into planning_workspace_client (organization_id, workspace_id, company_id, priority, created_at)
+        values (?, ?, ?, 0, ?)
       `);
-      uniqueCompanyIds.forEach((companyId) => insertClient.run(req.params.workspaceId, companyId, now));
-      db.prepare('update planning_workspace set updated_at = ? where id = ?').run(now, req.params.workspaceId);
+      uniqueCompanyIds.forEach((companyId) => insertClient.run(organizationId ?? 'org-holand', req.params.workspaceId, companyId, now));
+      db.prepare(`
+        update planning_workspace
+        set updated_at = ?
+        where id = ?
+          ${planningTenantClause('planning_workspace', organizationId)}
+      `).run(now, req.params.workspaceId, ...planningTenantBind(organizationId));
     });
 
     try {
       tx();
-      return res.json(readWorkspace(req.params.workspaceId));
+      return res.json(readWorkspace(req.params.workspaceId, organizationId));
     } catch (error) {
       return res.status(400).json({ message: 'Não foi possível adicionar cliente.', detail: errorMessage(error) });
     }
   });
 
   app.delete('/planning/workspaces/:workspaceId/clients/:companyId', (req, res) => {
-    const workspace = db.prepare('select id from planning_workspace where id = ?').get(req.params.workspaceId);
+    const organizationId = readPlanningOrganizationId(res);
+    const workspace = db.prepare(`
+      select id
+      from planning_workspace
+      where id = ?
+        ${planningTenantClause('planning_workspace', organizationId)}
+    `).get(req.params.workspaceId, ...planningTenantBind(organizationId));
     if (!workspace) return res.status(404).json({ message: 'Planejamento não encontrado.' });
 
     const link = db.prepare(`
       select workspace_id, company_id
       from planning_workspace_client
       where workspace_id = ? and company_id = ?
-    `).get(req.params.workspaceId, req.params.companyId);
+        ${planningTenantClause('planning_workspace_client', organizationId)}
+    `).get(req.params.workspaceId, req.params.companyId, ...planningTenantBind(organizationId));
     if (!link) return res.status(404).json({ message: 'Cliente não está neste planejamento.' });
 
     const now = nowDateIso();
@@ -346,22 +408,33 @@ export function registerPlanningRoutes(app: Express) {
         .run(req.params.workspaceId, req.params.companyId);
       db.prepare('delete from planning_workspace_client where workspace_id = ? and company_id = ?')
         .run(req.params.workspaceId, req.params.companyId);
-      db.prepare('update planning_workspace set updated_at = ? where id = ?').run(now, req.params.workspaceId);
+      db.prepare(`
+        update planning_workspace
+        set updated_at = ?
+        where id = ?
+          ${planningTenantClause('planning_workspace', organizationId)}
+      `).run(now, req.params.workspaceId, ...planningTenantBind(organizationId));
     });
 
     try {
       tx();
-      return res.json(readWorkspace(req.params.workspaceId));
+      return res.json(readWorkspace(req.params.workspaceId, organizationId));
     } catch (error) {
       return res.status(400).json({ message: 'Não foi possível remover cliente.', detail: errorMessage(error) });
     }
   });
 
   app.post('/planning/workspaces/:workspaceId/cohorts', (req, res) => {
+    const organizationId = readPlanningOrganizationId(res);
     const parsed = createPlanningCohortSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json(parsed.error.flatten());
 
-    const workspace = db.prepare('select id from planning_workspace where id = ?').get(req.params.workspaceId);
+    const workspace = db.prepare(`
+      select id
+      from planning_workspace
+      where id = ?
+        ${planningTenantClause('planning_workspace', organizationId)}
+    `).get(req.params.workspaceId, ...planningTenantBind(organizationId));
     if (!workspace) return res.status(404).json({ message: 'Planejamento não encontrado.' });
 
     const payload = parsed.data;
@@ -418,17 +491,18 @@ export function registerPlanningRoutes(app: Express) {
 
     const tx = db.transaction(() => {
       db.prepare(`
-        insert or ignore into planning_workspace_client (workspace_id, company_id, priority, created_at)
-        values (?, ?, 0, ?)
-      `).run(req.params.workspaceId, payload.company_id, now);
+        insert or ignore into planning_workspace_client (organization_id, workspace_id, company_id, priority, created_at)
+        values (?, ?, ?, 0, ?)
+      `).run(organizationId ?? 'org-holand', req.params.workspaceId, payload.company_id, now);
 
       db.prepare(`
         insert into planning_cohort (
-          id, workspace_id, company_id, module_id, technician_id, name, status,
+          id, organization_id, workspace_id, company_id, module_id, technician_id, name, status,
           delivery_mode, period, notes, created_at, updated_at
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         planningCohortId,
+        organizationId ?? 'org-holand',
         req.params.workspaceId,
         payload.company_id,
         payload.module_id,
@@ -444,13 +518,14 @@ export function registerPlanningRoutes(app: Express) {
 
       const insertEncounter = db.prepare(`
         insert into planning_encounter (
-          id, workspace_id, planning_cohort_id, company_id, module_id, technician_id,
+          id, organization_id, workspace_id, planning_cohort_id, company_id, module_id, technician_id,
           encounter_index, day_date, start_time, end_time, status, notes, created_at, updated_at
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       payload.encounters.forEach((encounter, index) => {
         insertEncounter.run(
           uuid('ple'),
+          organizationId ?? 'org-holand',
           req.params.workspaceId,
           planningCohortId,
           payload.company_id,
@@ -466,12 +541,17 @@ export function registerPlanningRoutes(app: Express) {
           now
         );
       });
-      db.prepare('update planning_workspace set updated_at = ? where id = ?').run(now, req.params.workspaceId);
+      db.prepare(`
+        update planning_workspace
+        set updated_at = ?
+        where id = ?
+          ${planningTenantClause('planning_workspace', organizationId)}
+      `).run(now, req.params.workspaceId, ...planningTenantBind(organizationId));
     });
 
     try {
       tx();
-      const detail = readWorkspace(req.params.workspaceId);
+      const detail = readWorkspace(req.params.workspaceId, organizationId);
       const cohort = detail?.cohorts.find((item) => item.id === planningCohortId);
       return res.status(201).json({ cohort, encounters: cohort?.encounters ?? [] });
     } catch (error) {

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes } from 'node:crypto';
-import express, { type Express, type Request } from 'express';
+import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import puppeteer from 'puppeteer-core';
 import { z } from 'zod';
 import { clearAllData, db, nowDateIso, uuid } from './db.js';
@@ -1265,32 +1265,35 @@ function normalizeCompanyRelation(relation?: string | null): (typeof COMPANY_REL
   return 'Nosso';
 }
 
-function cohortCodeExists(code: string, excludeCohortId?: string): boolean {
+function cohortCodeExists(code: string, excludeCohortId?: string, organizationId?: string | null): boolean {
   if (!code.trim()) return false;
   if (excludeCohortId) {
     const row = db.prepare(`
       select 1 as ok
       from cohort
       where upper(code) = upper(?) and id <> ?
+        ${scopedTenantClause('cohort', organizationId ?? null)}
       limit 1
-    `).get(code.trim(), excludeCohortId) as { ok: number } | undefined;
+    `).get(code.trim(), excludeCohortId, ...tenantBind(organizationId ?? null)) as { ok: number } | undefined;
     return Boolean(row?.ok);
   }
   const row = db.prepare(`
     select 1 as ok
     from cohort
     where upper(code) = upper(?)
+      ${scopedTenantClause('cohort', organizationId ?? null)}
     limit 1
-  `).get(code.trim()) as { ok: number } | undefined;
+  `).get(code.trim(), ...tenantBind(organizationId ?? null)) as { ok: number } | undefined;
   return Boolean(row?.ok);
 }
 
-function nextAutoCohortCode(): string {
+function nextAutoCohortCode(organizationId?: string | null): string {
   const rows = db.prepare(`
     select code
     from cohort
     where upper(code) like 'TUR-%'
-  `).all() as Array<{ code: string }>;
+      ${scopedTenantClause('cohort', organizationId ?? null)}
+  `).all(...tenantBind(organizationId ?? null)) as Array<{ code: string }>;
 
   let maxNumeric = 0;
   rows.forEach((row) => {
@@ -1304,7 +1307,7 @@ function nextAutoCohortCode(): string {
 
   let next = maxNumeric + 1;
   let candidate = `TUR-${String(next).padStart(3, '0')}`;
-  while (cohortCodeExists(candidate)) {
+  while (cohortCodeExists(candidate, undefined, organizationId)) {
     next += 1;
     candidate = `TUR-${String(next).padStart(3, '0')}`;
   }
@@ -1312,20 +1315,20 @@ function nextAutoCohortCode(): string {
   return candidate;
 }
 
-function resolveUniqueCohortCode(requestedCode: string, excludeCohortId?: string): string {
+function resolveUniqueCohortCode(requestedCode: string, excludeCohortId?: string, organizationId?: string | null): string {
   const normalized = requestedCode.trim().toUpperCase();
-  if (!cohortCodeExists(normalized, excludeCohortId)) {
+  if (!cohortCodeExists(normalized, excludeCohortId, organizationId)) {
     return normalized;
   }
 
   const turMatch = normalized.match(/^TUR-(\d+)$/);
   if (turMatch) {
-    return nextAutoCohortCode();
+    return nextAutoCohortCode(organizationId);
   }
 
   let suffix = 2;
   let candidate = `${normalized}-${suffix}`;
-  while (cohortCodeExists(candidate, excludeCohortId)) {
+  while (cohortCodeExists(candidate, excludeCohortId, organizationId)) {
     suffix += 1;
     candidate = `${normalized}-${suffix}`;
   }
@@ -2694,6 +2697,7 @@ function findTechnicianConflict(params: {
   scheduleDays?: Array<{ day_index: number; day_date: string; start_time?: string | null; end_time?: string | null }>;
   blocks: Array<{ start_day_offset: number; duration_days: number }>;
   excludeCohortId?: string;
+  organizationId?: string | null;
 }): { id: string; code: string; name: string; conflictDate: string } | null {
   const rows = params.excludeCohortId
     ? db.prepare(`
@@ -2702,15 +2706,17 @@ function findTechnicianConflict(params: {
       where technician_id = ?
         and status <> 'Cancelada'
         and id <> ?
+        ${scopedTenantClause('cohort', params.organizationId ?? null)}
       order by date(start_date) asc
-    `).all(params.technicianId, params.excludeCohortId)
+    `).all(params.technicianId, params.excludeCohortId, ...tenantBind(params.organizationId ?? null))
     : db.prepare(`
       select id, code, name, start_date, period, start_time, end_time
       from cohort
       where technician_id = ?
         and status <> 'Cancelada'
+        ${scopedTenantClause('cohort', params.organizationId ?? null)}
       order by date(start_date) asc
-    `).all(params.technicianId);
+    `).all(params.technicianId, ...tenantBind(params.organizationId ?? null));
 
   const candidateCohorts = rows as Array<{
     id: string;
@@ -3007,6 +3013,86 @@ function isPublicOrPortalPath(pathname: string): boolean {
   return false;
 }
 
+function readScopedOrganizationId(res: Response) {
+  return readInternalAuthContext(res)?.organization_id ?? null;
+}
+
+function sendMissingTenant(res: Response) {
+  return res.status(403).json({
+    message: 'Tenant obrigatório para acessar a Plataforma Modular.',
+    reason: 'missing_tenant'
+  });
+}
+
+function scopedTenantClause(alias: string, organizationId: string | null) {
+  return organizationId ? ` and ${alias}.organization_id = ?` : '';
+}
+
+function tenantBind(organizationId: string | null): string[] {
+  return organizationId ? [organizationId] : [];
+}
+
+function scopedResourceGuard(req: Request, res: Response, next: NextFunction) {
+  const organizationId = readScopedOrganizationId(res);
+  if (!organizationId) {
+    return next();
+  }
+
+  const candidates: Array<{
+    match: RegExpMatchArray | null;
+    table: 'company' | 'cohort' | 'technician' | 'company_license' | 'license_program';
+    label: string;
+    skipIds?: Set<string>;
+  }> = [
+    {
+      match: req.path.match(/^\/companies\/([^/]+)/),
+      table: 'company',
+      label: 'Empresa'
+    },
+    {
+      match: req.path.match(/^\/cohorts\/([^/]+)/),
+      table: 'cohort',
+      label: 'Turma',
+      skipIds: new Set(['check-technician-conflict'])
+    },
+    {
+      match: req.path.match(/^\/technicians\/([^/]+)/),
+      table: 'technician',
+      label: 'Técnico'
+    },
+    {
+      match: req.path.match(/^\/licenses\/([^/]+)/),
+      table: 'company_license',
+      label: 'Licença',
+      skipIds: new Set(['import-preview'])
+    },
+    {
+      match: req.path.match(/^\/license-programs\/([^/]+)/),
+      table: 'license_program',
+      label: 'Programa'
+    }
+  ];
+
+  const candidate = candidates.find((item) => item.match);
+  const resourceId = candidate?.match?.[1];
+  if (!candidate || !resourceId || candidate.skipIds?.has(resourceId)) {
+    return next();
+  }
+
+  const exists = db.prepare(`
+    select id
+    from ${candidate.table}
+    where id = ? and organization_id = ?
+    limit 1
+  `).get(resourceId, organizationId) as { id: string } | undefined;
+
+  if (!exists) {
+    return res.status(404).json({ message: `${candidate.label} não encontrado.` });
+  }
+
+  return next();
+}
+
 function readBootstrapAdminEmails(): Set<string> {
   return new Set(
     (process.env.PRYMEIRA_BOOTSTRAP_ADMIN_EMAILS ?? '')
@@ -3272,6 +3358,10 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
       return next();
     }
 
+    if (!context.organization_id) {
+      return sendMissingTenant(res);
+    }
+
     const requiredPermissions = resolveRequiredPermissionsForRequest(req);
     if (requiredPermissions && requiredPermissions.length > 0 && !hasAnyInternalPermission(context, requiredPermissions)) {
       return res.status(403).json({
@@ -3282,6 +3372,8 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
 
     return next();
   });
+
+  app.use(scopedResourceGuard);
 
   app.use((req, res, next) => {
     if (!shouldCaptureInternalAudit(req)) {
@@ -4038,6 +4130,7 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
   });
   
   app.get('/cohorts', (_req, res) => {
+    const organizationId = readScopedOrganizationId(res);
     const rows = (db.prepare(`
       select c.*, t.name as technician_name,
         (
@@ -4080,8 +4173,11 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
         ), '') as module_names
       from cohort c
       left join technician t on t.id = c.technician_id
+        ${organizationId ? 'and t.organization_id = ?' : ''}
+      where 1 = 1
+        ${scopedTenantClause('c', organizationId)}
       order by date(coalesce(schedule_start_date, c.start_date)) asc
-    `).all() as Array<Record<string, unknown> & { start_date: string; schedule_start_date?: string | null }>).map((row) => {
+    `).all(...tenantBind(organizationId), ...tenantBind(organizationId)) as Array<Record<string, unknown> & { start_date: string; schedule_start_date?: string | null }>).map((row) => {
       const { schedule_start_date: scheduleStartDate, ...cohort } = row;
       return {
         ...cohort,
@@ -4604,7 +4700,13 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
       return res.json({ has_conflict: false });
     }
   
-    const technician = db.prepare('select id, name from technician where id = ?').get(payload.technician_id) as {
+    const organizationId = readScopedOrganizationId(res);
+    const technician = db.prepare(`
+      select id, name
+      from technician
+      where id = ?
+        ${scopedTenantClause('technician', organizationId)}
+    `).get(payload.technician_id, ...tenantBind(organizationId)) as {
       id: string;
       name: string;
     } | undefined;
@@ -4620,7 +4722,8 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
       endTime: payload.end_time ?? null,
       scheduleDays: payload.schedule_days,
       blocks: payload.blocks,
-      excludeCohortId: payload.exclude_cohort_id
+      excludeCohortId: payload.exclude_cohort_id,
+      organizationId
     });
   
     if (!conflict) {
@@ -4641,6 +4744,7 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
   });
   
   app.post('/cohorts', (req, res) => {
+    const organizationId = readScopedOrganizationId(res);
     const parsed = createCohortSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json(parsed.error.flatten());
@@ -4661,6 +4765,18 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
       return res.status(400).json({ message: scheduleDaysError });
     }
   
+    if (payload.technician_id) {
+      const technician = db.prepare(`
+        select id
+        from technician
+        where id = ?
+          ${scopedTenantClause('technician', organizationId)}
+      `).get(payload.technician_id, ...tenantBind(organizationId)) as { id: string } | undefined;
+      if (!technician) {
+        return res.status(404).json({ message: 'Técnico não encontrado' });
+      }
+    }
+
     if (payload.technician_id && payload.status !== 'Cancelada') {
       const conflict = findTechnicianConflict({
         technicianId: payload.technician_id,
@@ -4669,7 +4785,8 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
         startTime: payload.period === 'Meio_periodo' ? (payload.start_time ?? null) : null,
         endTime: payload.period === 'Meio_periodo' ? (payload.end_time ?? null) : null,
         scheduleDays: payload.schedule_days,
-        blocks: payload.blocks
+        blocks: payload.blocks,
+        organizationId
       });
       if (conflict) {
         return res.status(400).json({
@@ -4679,17 +4796,18 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
     }
   
     const cohortId = uuid('coh');
-    const resolvedCode = resolveUniqueCohortCode(payload.code);
+    const resolvedCode = resolveUniqueCohortCode(payload.code, undefined, organizationId);
     const resolvedStartDate = deriveCohortStartDateFromScheduleDays(payload.schedule_days) ?? payload.start_date;
   
     const tx = db.transaction(() => {
       db.prepare(`
         insert into cohort (
-          id, code, name, start_date, technician_id, status, capacity_companies, period, start_time, end_time, delivery_mode, notes
+          id, organization_id, code, name, start_date, technician_id, status, capacity_companies, period, start_time, end_time, delivery_mode, notes
         )
-        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         cohortId,
+        organizationId ?? 'org-holand',
         resolvedCode,
         payload.name,
         resolvedStartDate,
@@ -4746,6 +4864,7 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
   });
   
   app.patch('/cohorts/:id', (req, res) => {
+    const organizationId = readScopedOrganizationId(res);
     const parsed = updateCohortSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json(parsed.error.flatten());
@@ -4844,6 +4963,18 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
       return res.status(400).json({ message: scheduleDaysError });
     }
   
+    if (nextTechnicianId) {
+      const technician = db.prepare(`
+        select id
+        from technician
+        where id = ?
+          ${scopedTenantClause('technician', organizationId)}
+      `).get(nextTechnicianId, ...tenantBind(organizationId)) as { id: string } | undefined;
+      if (!technician) {
+        return res.status(404).json({ message: 'Técnico não encontrado' });
+      }
+    }
+
     if (nextTechnicianId && nextStatus !== 'Cancelada') {
       const conflict = findTechnicianConflict({
         technicianId: nextTechnicianId,
@@ -4853,7 +4984,8 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
         endTime: nextPeriod === 'Meio_periodo' ? nextEndTime : null,
         scheduleDays: nextScheduleDays,
         blocks: nextBlocks,
-        excludeCohortId: req.params.id
+        excludeCohortId: req.params.id,
+        organizationId
       });
       if (conflict) {
         return res.status(400).json({
@@ -4869,7 +5001,7 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
       if (key === 'blocks' || key === 'start_time' || key === 'end_time' || key === 'schedule_days' || key === 'start_date') return;
       if (key === 'code' && typeof value === 'string') {
         fields.push('code = ?');
-        values.push(resolveUniqueCohortCode(value, req.params.id));
+        values.push(resolveUniqueCohortCode(value, req.params.id, organizationId));
         return;
       }
       fields.push(`${key} = ?`);
@@ -5618,6 +5750,7 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
   }
   
   app.get('/companies', (req, res) => {
+    const organizationId = readScopedOrganizationId(res);
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
     const statusFilter = typeof req.query.status === 'string' ? req.query.status : '';
     const priorityFilter = typeof req.query.priority_level === 'string' ? req.query.priority_level : '';
@@ -5664,6 +5797,7 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
         or lower(coalesce(c.contact_name, '')) like '%' || lower(?) || '%'
         or lower(coalesce(c.contact_email, '')) like '%' || lower(?) || '%'
       )
+        ${scopedTenantClause('c', organizationId)}
         and (? = '' or c.status = ?)
         and (? = '' or c.priority_level = ?)
         and (? = '' or c.modality = ?)
@@ -5684,6 +5818,7 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
       search,
       search,
       search,
+      ...tenantBind(organizationId),
       statusFilter,
       statusFilter,
       priorityFilter,
@@ -5730,6 +5865,7 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
   });
   
   app.post('/companies', (req, res) => {
+    const organizationId = readScopedOrganizationId(res);
     const schema = z.object({
       name: z.string().min(2),
       status: z.enum(COMPANY_STATUS_VALUES).default('Em_treinamento'),
@@ -5752,11 +5888,12 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
     try {
       db.prepare(`
         insert into company (
-          id, name, status, notes, priority, priority_level, contact_name, contact_phone, contact_email, modality, is_third_party
+          id, organization_id, name, status, notes, priority, priority_level, contact_name, contact_phone, contact_email, modality, is_third_party
         )
-        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         companyId,
+        organizationId ?? 'org-holand',
         parsed.data.name.trim(),
         normalizeCompanyStatus(parsed.data.status),
         parsed.data.notes?.trim() || null,
@@ -6892,20 +7029,25 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
   });
   
   app.get('/license-programs', (_req, res) => {
+    const organizationId = readScopedOrganizationId(res);
     const rows = db.prepare(`
       select lp.id, lp.name, lp.topsolid_kind, lp.topsolid_code, lp.notes, lp.created_at, lp.updated_at,
         (
           select count(*)
           from company_license l
           where l.program_id = lp.id
+            ${scopedTenantClause('l', organizationId)}
         ) as usage_count
       from license_program lp
+      where 1 = 1
+        ${scopedTenantClause('lp', organizationId)}
       order by lp.name asc
-    `).all();
+    `).all(...tenantBind(organizationId), ...tenantBind(organizationId));
     return res.json(rows);
   });
   
   app.post('/license-programs', (req, res) => {
+    const organizationId = readScopedOrganizationId(res);
     const schema = z.object({
       name: z.string().min(2),
       topsolid_kind: z.enum(['Module', 'Group']).nullable().optional(),
@@ -6920,7 +7062,12 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
     const payload = parsed.data;
     const topsolidKind = payload.topsolid_kind ?? null;
     const topsolidCode = payload.topsolid_code?.trim() || null;
-    const existing = db.prepare('select id from license_program where lower(name) = lower(?)').get(payload.name.trim()) as { id: string } | undefined;
+    const existing = db.prepare(`
+      select id
+      from license_program
+      where lower(name) = lower(?)
+        ${scopedTenantClause('license_program', organizationId)}
+    `).get(payload.name.trim(), ...tenantBind(organizationId)) as { id: string } | undefined;
     if (existing) {
       return res.status(400).json({ message: 'Já existe um programa com este nome.' });
     }
@@ -6928,7 +7075,8 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
       const duplicateTopSolidCode = db.prepare(`
         select id from license_program
         where topsolid_kind = ? and topsolid_code = ?
-      `).get(topsolidKind, topsolidCode) as { id: string } | undefined;
+          ${scopedTenantClause('license_program', organizationId)}
+      `).get(topsolidKind, topsolidCode, ...tenantBind(organizationId)) as { id: string } | undefined;
       if (duplicateTopSolidCode) {
         return res.status(400).json({ message: 'Já existe um programa com este tipo e código TopSolid.' });
       }
@@ -6938,9 +7086,9 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
     const id = uuid('lpr');
     try {
       db.prepare(`
-        insert into license_program (id, name, topsolid_kind, topsolid_code, notes, created_at, updated_at)
-        values (?, ?, ?, ?, ?, ?, ?)
-      `).run(id, payload.name.trim(), topsolidKind, topsolidCode, payload.notes ?? null, nowIso, nowIso);
+        insert into license_program (id, organization_id, name, topsolid_kind, topsolid_code, notes, created_at, updated_at)
+        values (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, organizationId ?? 'org-holand', payload.name.trim(), topsolidKind, topsolidCode, payload.notes ?? null, nowIso, nowIso);
       return res.status(201).json({ id });
     } catch (error) {
       return res.status(400).json({ message: 'Não foi possível criar programa', detail: errorMessage(error) });
@@ -6948,6 +7096,7 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
   });
   
   app.patch('/license-programs/:id', (req, res) => {
+    const organizationId = readScopedOrganizationId(res);
     const schema = z.object({
       name: z.string().min(2).optional(),
       topsolid_kind: z.enum(['Module', 'Group']).nullable().optional(),
@@ -6972,7 +7121,13 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
     };
   
     if (typeof parsed.data.name !== 'undefined') {
-      const duplicate = db.prepare('select id from license_program where lower(name) = lower(?) and id <> ?').get(parsed.data.name.trim(), req.params.id) as { id: string } | undefined;
+      const duplicate = db.prepare(`
+        select id
+        from license_program
+        where lower(name) = lower(?)
+          and id <> ?
+          ${scopedTenantClause('license_program', organizationId)}
+      `).get(parsed.data.name.trim(), req.params.id, ...tenantBind(organizationId)) as { id: string } | undefined;
       if (duplicate) {
         return res.status(400).json({ message: 'Já existe outro programa com este nome.' });
       }
@@ -6993,7 +7148,8 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
       const duplicateTopSolidCode = db.prepare(`
         select id from license_program
         where topsolid_kind = ? and topsolid_code = ? and id <> ?
-      `).get(nextTopSolidKind, nextTopSolidCode, req.params.id) as { id: string } | undefined;
+          ${scopedTenantClause('license_program', organizationId)}
+      `).get(nextTopSolidKind, nextTopSolidCode, req.params.id, ...tenantBind(organizationId)) as { id: string } | undefined;
       if (duplicateTopSolidCode) {
         return res.status(400).json({ message: 'Já existe outro programa com este tipo e código TopSolid.' });
       }
@@ -7033,7 +7189,13 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
       return res.status(404).json({ message: 'Programa não encontrado' });
     }
   
-    const usage = db.prepare('select count(*) as count from company_license where program_id = ?').get(req.params.id) as { count: number };
+    const organizationId = readScopedOrganizationId(res);
+    const usage = db.prepare(`
+      select count(*) as count
+      from company_license
+      where program_id = ?
+        ${scopedTenantClause('company_license', organizationId)}
+    `).get(req.params.id, ...tenantBind(organizationId)) as { count: number };
     if (usage.count > 0) {
       return res.status(400).json({ message: 'Programa em uso por licenças. Realoque ou exclua as licenças antes.' });
     }
@@ -7130,6 +7292,7 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
   });
   
   app.get('/licenses', (_req, res) => {
+    const organizationId = readScopedOrganizationId(res);
     const rows = db.prepare(`
       select l.id, l.company_id, c.name as company_name,
         l.program_id, coalesce(lp.name, l.name) as program_name,
@@ -7150,8 +7313,10 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
       from company_license l
       join company c on c.id = l.company_id
       left join license_program lp on lp.id = l.program_id
+      where 1 = 1
+        ${scopedTenantClause('l', organizationId)}
       order by date(l.expires_at) asc, c.name asc, coalesce(lp.name, l.name) asc
-    `).all() as Array<{
+    `).all(...tenantBind(organizationId)) as Array<{
       id: string;
       company_id: string;
       company_name: string;
@@ -7218,6 +7383,7 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
   });
 
   app.post('/licenses/import-preview', (req, res) => {
+    const organizationId = readScopedOrganizationId(res);
     const parsed = licenseImportPreviewSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json(parsed.error.flatten());
@@ -7227,8 +7393,10 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
     const programRows = db.prepare(`
       select id, name, topsolid_kind, topsolid_code
       from license_program
+      where 1 = 1
+        ${scopedTenantClause('license_program', organizationId)}
       order by name asc
-    `).all() as Array<{
+    `).all(...tenantBind(organizationId)) as Array<{
       id: string;
       name: string;
       topsolid_kind: TopSolidImportKind | null;
@@ -7337,17 +7505,28 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
   });
   
   app.post('/licenses', (req, res) => {
+    const organizationId = readScopedOrganizationId(res);
     const parsed = licenseCreateSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json(parsed.error.flatten());
     }
   
     const payload = parsed.data;
-    const company = db.prepare('select id from company where id = ?').get(payload.company_id) as { id: string } | undefined;
+    const company = db.prepare(`
+      select id
+      from company
+      where id = ?
+        ${scopedTenantClause('company', organizationId)}
+    `).get(payload.company_id, ...tenantBind(organizationId)) as { id: string } | undefined;
     if (!company) {
       return res.status(404).json({ message: 'Cliente não encontrado' });
     }
-    const program = db.prepare('select id, name from license_program where id = ?').get(payload.program_id) as { id: string; name: string } | undefined;
+    const program = db.prepare(`
+      select id, name
+      from license_program
+      where id = ?
+        ${scopedTenantClause('license_program', organizationId)}
+    `).get(payload.program_id, ...tenantBind(organizationId)) as { id: string; name: string } | undefined;
     if (!program) {
       return res.status(404).json({ message: 'Programa não encontrado' });
     }
@@ -7362,12 +7541,13 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
       const tx = db.transaction(() => {
         db.prepare(`
           insert into company_license (
-            id, company_id, name, program_id, user_name, module_list, license_identifier,
+            id, organization_id, company_id, name, program_id, user_name, module_list, license_identifier,
             renewal_cycle, expires_at, notes, last_renewed_at, created_at, updated_at
           )
-          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, null, ?, ?)
+          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, null, ?, ?)
         `).run(
           id,
+          organizationId ?? 'org-holand',
           payload.company_id,
           program.name,
           payload.program_id,
@@ -7390,6 +7570,7 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
   });
   
   app.patch('/licenses/:id', (req, res) => {
+    const organizationId = readScopedOrganizationId(res);
     const parsed = licenseUpdateSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json(parsed.error.flatten());
@@ -7401,7 +7582,12 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
     }
   
     if (parsed.data.company_id) {
-      const company = db.prepare('select id from company where id = ?').get(parsed.data.company_id) as { id: string } | undefined;
+      const company = db.prepare(`
+        select id
+        from company
+        where id = ?
+          ${scopedTenantClause('company', organizationId)}
+      `).get(parsed.data.company_id, ...tenantBind(organizationId)) as { id: string } | undefined;
       if (!company) {
         return res.status(404).json({ message: 'Cliente não encontrado' });
       }
@@ -7422,7 +7608,12 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
     const values: unknown[] = [];
   
     if (typeof parsed.data.program_id !== 'undefined') {
-      const program = db.prepare('select id, name from license_program where id = ?').get(parsed.data.program_id) as { id: string; name: string } | undefined;
+      const program = db.prepare(`
+        select id, name
+        from license_program
+        where id = ?
+          ${scopedTenantClause('license_program', organizationId)}
+      `).get(parsed.data.program_id, ...tenantBind(organizationId)) as { id: string; name: string } | undefined;
       if (!program) {
         return res.status(404).json({ message: 'Programa não encontrado' });
       }
@@ -7524,23 +7715,28 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
   });
   
   app.get('/technicians', (_req, res) => {
+    const organizationId = readScopedOrganizationId(res);
     const rows = db.prepare(`
       select t.id, t.name, t.availability_notes, t.hourly_cost, t.calendar_color,
         count(c.id) as monthly_load
       from technician t
       left join cohort c on c.technician_id = t.id
+        ${organizationId ? 'and c.organization_id = ?' : ''}
         and strftime('%Y-%m', c.start_date) = strftime('%Y-%m', 'now')
         and c.status in ('Planejada','Aguardando_quorum','Confirmada')
+      where 1 = 1
+        ${scopedTenantClause('t', organizationId)}
       group by t.id
       order by t.name asc
-    `).all();
+    `).all(...tenantBind(organizationId), ...tenantBind(organizationId));
   
     const skillRows = db.prepare(`
       select ts.technician_id, mt.code, mt.name
       from technician_skill ts
       join module_template mt on mt.id = ts.module_id
+      ${organizationId ? 'join technician t on t.id = ts.technician_id and t.organization_id = ?' : ''}
       order by mt.code asc
-    `).all() as Array<{ technician_id: string; code: string; name: string }>;
+    `).all(...tenantBind(organizationId)) as Array<{ technician_id: string; code: string; name: string }>;
   
     const skillsByTech = new Map<string, Array<{ code: string; name: string }>>();
     skillRows.forEach((row) => {
@@ -7553,6 +7749,7 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
   });
   
   app.post('/technicians', (req, res) => {
+    const organizationId = readScopedOrganizationId(res);
     const schema = z.object({
       name: z.string().min(2),
       availability_notes: z.string().nullable().optional(),
@@ -7568,10 +7765,11 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
     const technicianId = uuid('tech');
     const tx = db.transaction(() => {
       db.prepare(`
-        insert into technician (id, name, availability_notes, hourly_cost, calendar_color)
-        values (?, ?, ?, ?, ?)
+        insert into technician (id, organization_id, name, availability_notes, hourly_cost, calendar_color)
+        values (?, ?, ?, ?, ?, ?)
       `).run(
         technicianId,
+        organizationId ?? 'org-holand',
         parsed.data.name.trim(),
         parsed.data.availability_notes ?? null,
         parsed.data.hourly_cost ?? null,
