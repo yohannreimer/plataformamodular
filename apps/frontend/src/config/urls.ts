@@ -7,11 +7,11 @@ export const PRYMEIRA_HUB_URL = (
 export function productEntryPathForHostname(hostname: string) {
   const normalized = hostname.trim().toLowerCase();
 
-  if (normalized === 'fluvia.prymeiradigital.com.br') {
+  if (normalized === 'fluvia.prymeiradigital.com.br' || normalized === 'fluvia.primeiradigital.com.br') {
     return '/m/financeiro';
   }
 
-  if (normalized === 'velio.prymeiradigital.com.br') {
+  if (normalized === 'velio.prymeiradigital.com.br' || normalized === 'velio.primeiradigital.com.br') {
     return '/m/tecnico';
   }
 

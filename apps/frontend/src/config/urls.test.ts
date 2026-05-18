@@ -5,6 +5,8 @@ describe('productEntryPathForHostname', () => {
   test('routes public product domains straight to their modules', () => {
     expect(productEntryPathForHostname('fluvia.prymeiradigital.com.br')).toBe('/m/financeiro');
     expect(productEntryPathForHostname('velio.prymeiradigital.com.br')).toBe('/m/tecnico');
+    expect(productEntryPathForHostname('fluvia.primeiradigital.com.br')).toBe('/m/financeiro');
+    expect(productEntryPathForHostname('velio.primeiradigital.com.br')).toBe('/m/tecnico');
   });
 
   test('keeps the shared app domain on the hub', () => {

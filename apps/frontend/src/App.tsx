@@ -510,7 +510,7 @@ function InternalApp() {
     return <Navigate to={legacyTechnicalTarget} replace />;
   }
 
-  if (location.pathname === '/' && productHostEntryPath) {
+  if (isHubRoute && productHostEntryPath) {
     return <Navigate to={productHostEntryPath} replace />;
   }
 
