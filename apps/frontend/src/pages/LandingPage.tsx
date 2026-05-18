@@ -232,11 +232,12 @@ function FluviaLandingPage() {
                   Dashboard — Fluvia
                 </span>
               </div>
-              <ScreenshotPlaceholder
+              <img
+                src="/fluvia-hero-dashboard.png"
+                alt="Dashboard Fluvia"
+                width={600}
                 height={200}
-                label="screenshot do dashboard"
-                tint={primaryLight}
-                border="#c8d8f8"
+                style={{ width: '100%', height: 200, objectFit: 'cover', objectPosition: 'top', display: 'block' }}
               />
             </div>
             <div
@@ -397,12 +398,13 @@ function FluviaLandingPage() {
                 }}
               />
             </div>
-            <ScreenshotPlaceholder
-              height={300}
-              label="screenshot do fluxo de caixa"
-              tint={primaryLight}
-              border="#c8d8f8"
-            />
+              <img
+                src="/fluvia-cashflow.png"
+                alt="Fluxo de caixa Fluvia"
+                width={1100}
+                height={300}
+                style={{ width: '100%', height: 300, objectFit: 'cover', objectPosition: 'top', display: 'block' }}
+              />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
             {[
@@ -477,18 +479,21 @@ function FluviaLandingPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {[
               {
+                src: '/fluvia-dre.png',
                 title: 'DRE automático',
                 desc: 'Resultado do mês disponível a qualquer hora. Sem esperar o contador.',
               },
               {
+                src: '/fluvia-receivables.png',
                 title: 'Fluxo de caixa em tempo real',
                 desc: 'Entradas e saídas do dia. Decida com número, não com intuição.',
               },
               {
+                src: '/fluvia-reconciliation.png',
                 title: 'Conciliação bancária',
                 desc: 'Importe o extrato. O Fluvia cruza com seus lançamentos automaticamente.',
               },
-            ].map(({ title, desc }) => (
+            ].map(({ src, title, desc }) => (
               <div
                 key={title}
                 style={{
@@ -500,12 +505,12 @@ function FluviaLandingPage() {
                   borderRadius: 10,
                 }}
               >
-                <ScreenshotPlaceholder
+                <img
+                  src={src}
+                  alt={title}
                   width={120}
                   height={80}
-                  label="screenshot"
-                  tint={primaryLight}
-                  border="#c8d8f8"
+                  style={{ width: 120, height: 80, objectFit: 'cover', objectPosition: 'top', borderRadius: 6, flexShrink: 0 }}
                 />
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>{title}</div>
