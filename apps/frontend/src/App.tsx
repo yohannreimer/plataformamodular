@@ -54,6 +54,7 @@ import {
   TECHNICAL_BASE_PATH
 } from './core/modules';
 import { NoProductAccessPage } from './pages/NoProductAccessPage';
+import { LandingPage } from './pages/LandingPage';
 import { productEntryPathForHostname } from './config/urls';
 const INTERNAL_TAB_INITIALIZED_KEY = 'orquestrador_internal_tab_initialized_v1';
 type KanbanAlertCounts = {
@@ -548,6 +549,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/portal/:slug/*" element={<PortalShell />} />
+      <Route path="/landing" element={<LandingPage />} />
       <Route path="*" element={<InternalApp />} />
     </Routes>
   );
