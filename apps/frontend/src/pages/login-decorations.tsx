@@ -85,5 +85,6 @@ type DecorationProps = { type: 'waves' | 'brackets-dots' };
 
 export function LoginDecoration({ type }: DecorationProps) {
   if (type === 'waves') return <WavesDecoration />;
-  return <BracketsDotsDecoration />;
+  if (type === 'brackets-dots') return <BracketsDotsDecoration />;
+  return null;
 }
