@@ -5,10 +5,13 @@ import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import { ToastProvider } from './shared/components/Toast';
 import { readRuntimeConfig } from './config/runtime';
+import { productBrowserTitleForHostname } from './config/urls';
 import './styles.css';
 
 const clerkPublishableKey = readRuntimeConfig('VITE_CLERK_PUBLISHABLE_KEY')
   ?? readRuntimeConfig('CLERK_PUBLISHABLE_KEY');
+
+document.title = productBrowserTitleForHostname(window.location.hostname);
 
 function MissingClerkConfig() {
   return (

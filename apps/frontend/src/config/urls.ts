@@ -17,3 +17,17 @@ export function productEntryPathForHostname(hostname: string) {
 
   return null;
 }
+
+export function productBrowserTitleForHostname(hostname: string) {
+  const normalized = hostname.trim().toLowerCase();
+
+  if (normalized === 'fluvia.prymeiradigital.com.br' || normalized === 'fluvia.primeiradigital.com.br') {
+    return 'Prymeira Fluvia';
+  }
+
+  if (normalized === 'velio.prymeiradigital.com.br' || normalized === 'velio.primeiradigital.com.br') {
+    return 'Prymeira Velio';
+  }
+
+  return 'Prymeira Apps';
+}
