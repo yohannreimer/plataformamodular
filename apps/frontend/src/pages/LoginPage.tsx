@@ -143,7 +143,6 @@ export function LoginPage() {
                   boxShadow: 'none',
                   background: 'transparent',
                   border: 'none',
-                  padding: '0',
                   width: '100%',
                 },
                 header: { display: 'none' },
