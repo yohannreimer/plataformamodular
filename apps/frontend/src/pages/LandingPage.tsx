@@ -4,6 +4,7 @@ import {
   TrendingUp, ArrowLeftRight, Landmark, Receipt,
   Kanban, Target, Users, BarChart2,
 } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { getAppTheme } from './login-themes';
 
@@ -81,6 +82,118 @@ function PainCard({
         <div style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{sub}</div>
       </div>
     </div>
+  );
+}
+
+// ─── Fluvia solution (auto-rotating screenshots) ──────────────────────────────
+
+const FLUVIA_AUTO_INTERVAL = 3800;
+
+const fluviaSolutionFeatures = [
+  { src: '/fluvia-hero-dashboard.png', icon: <TrendingUp size={16} />, label: 'Dashboard', desc: 'Visão executiva do mês — caixa, receita, resultado e alertas numa tela.' },
+  { src: '/fluvia-dre.png', icon: <TrendingUp size={16} />, label: 'DRE', desc: 'Resultado do mês disponível a qualquer hora. Sem esperar o contador.' },
+  { src: '/fluvia-cashflow.png', icon: <ArrowLeftRight size={16} />, label: 'Fluxo de caixa', desc: 'Projeção de entradas e saídas em 30, 60 e 90 dias.' },
+  { src: '/fluvia-receivables.png', icon: <Receipt size={16} />, label: 'Contas a receber', desc: 'Veja o que está em aberto, vencendo e atrasado — tudo num lugar.' },
+  { src: '/fluvia-reconciliation.png', icon: <Landmark size={16} />, label: 'Conciliação', desc: 'Importe o extrato. O Fluvia cruza com seus lançamentos automaticamente.' },
+];
+
+function FluviaSolutionSection({ primary, primaryLight }: { primary: string; primaryLight: string }) {
+  const [active, setActive] = useState(0);
+
+  // Auto-advance — timer resets whenever `active` changes (manual or auto)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setActive(i => (i + 1) % fluviaSolutionFeatures.length);
+    }, FLUVIA_AUTO_INTERVAL);
+    return () => clearTimeout(timer);
+  }, [active]);
+
+  const feature = fluviaSolutionFeatures[active];
+
+  return (
+    <section style={{ background: '#f8f9fb', padding: '72px 24px 80px', borderTop: '1px solid #f0f0f0' }}>
+      {/* CSS keyframe for progress bar — injected once */}
+      <style>{`
+        @keyframes fluviaProgress {
+          from { width: 0% }
+          to { width: 100% }
+        }
+      `}</style>
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+        <p style={{ fontSize: 12, fontWeight: 700, color: '#bbb', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 16 }}>
+          A SOLUÇÃO
+        </p>
+        <h2 style={{ fontSize: 40, fontWeight: 900, lineHeight: 1.15, letterSpacing: '-0.02em', margin: '0 0 12px' }}>
+          Um lugar só.<br />Tudo que o dono precisa ver.
+        </h2>
+        <p style={{ fontSize: 16, color: '#666', margin: '0 0 32px', lineHeight: 1.6 }}>
+          DRE, fluxo de caixa e contas num só lugar — sem precisar virar contador.
+        </p>
+
+        {/* Browser bezel */}
+        <div style={{ background: '#fff', border: '1px solid #dde4f0', borderRadius: 16, overflow: 'hidden', boxShadow: '0 8px 40px rgba(10,61,107,0.13)' }}>
+          {/* Chrome bar */}
+          <div style={{ background: '#1e2535', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f57' }} />
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#febc2e' }} />
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#28c840' }} />
+            <div style={{ flex: 1, background: '#3a4455', borderRadius: 4, height: 12, margin: '0 12px' }} />
+          </div>
+          {/* Progress bar — key forces remount → resets animation on every change */}
+          <div style={{ height: 3, background: primaryLight, position: 'relative', overflow: 'hidden' }}>
+            <div
+              key={active}
+              style={{
+                position: 'absolute',
+                top: 0, left: 0, height: '100%',
+                background: primary,
+                animation: `fluviaProgress ${FLUVIA_AUTO_INTERVAL}ms linear forwards`,
+              }}
+            />
+          </div>
+          {/* Screenshot */}
+          <img
+            key={feature.src}
+            src={feature.src}
+            alt={feature.label}
+            style={{ width: '100%', height: 460, objectFit: 'cover', objectPosition: 'top', display: 'block' }}
+          />
+          {/* Label bar */}
+          <div style={{ padding: '16px 24px', borderTop: `3px solid ${primary}`, display: 'flex', alignItems: 'center', gap: 14, background: '#fff' }}>
+            <div style={{ width: 36, height: 36, background: primary, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
+              {feature.icon}
+            </div>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 2 }}>{feature.label}</div>
+              <div style={{ fontSize: 13, color: '#666', lineHeight: 1.5 }}>{feature.desc}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Navigation pills */}
+        <div style={{ display: 'flex', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>
+          {fluviaSolutionFeatures.map((f, i) => (
+            <button
+              key={f.label}
+              onClick={() => setActive(i)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 7,
+                padding: '9px 18px',
+                border: 'none', borderRadius: 999, cursor: 'pointer',
+                fontSize: 13, fontWeight: 700,
+                transition: 'all 0.15s',
+                background: active === i ? primary : '#fff',
+                color: active === i ? '#fff' : '#555',
+                boxShadow: active === i ? `0 4px 14px rgba(10,61,107,0.22)` : '0 1px 4px rgba(0,0,0,0.08)',
+              }}
+            >
+              <span style={{ opacity: active === i ? 1 : 0.5, display: 'flex' }}>{f.icon}</span>
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -337,190 +450,8 @@ function FluviaLandingPage() {
         </div>
       </section>
 
-      {/* Solution */}
-      <section style={{ background: '#f8f9fb', padding: '80px 24px', borderTop: '1px solid #f0f0f0' }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-          <p
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: '#bbb',
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              marginBottom: 16,
-            }}
-          >
-            A SOLUÇÃO
-          </p>
-          <h2
-            style={{
-              fontSize: 40,
-              fontWeight: 900,
-              lineHeight: 1.15,
-              letterSpacing: '-0.02em',
-              margin: '0 0 12px',
-            }}
-          >
-            Um lugar só.<br />Tudo que o dono precisa ver.
-          </h2>
-          <p style={{ fontSize: 16, color: '#666', marginBottom: 36, lineHeight: 1.6 }}>
-            DRE, fluxo de caixa e contas num só lugar — sem precisar virar contador.
-          </p>
-          <div
-            style={{
-              background: '#1e2535',
-              borderRadius: 12,
-              overflow: 'hidden',
-              marginBottom: 24,
-              boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-            }}
-          >
-            <div
-              style={{
-                background: '#2a3344',
-                height: 28,
-                display: 'flex',
-                alignItems: 'center',
-                padding: '0 16px',
-                gap: 6,
-              }}
-            >
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f57' }} />
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#febc2e' }} />
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#28c840' }} />
-              <div
-                style={{
-                  flex: 1,
-                  background: '#3a4455',
-                  borderRadius: 4,
-                  height: 12,
-                  margin: '0 12px',
-                }}
-              />
-            </div>
-              <img
-                src="/fluvia-cashflow.png"
-                alt="Fluxo de caixa Fluvia"
-                width={1100}
-                height={300}
-                style={{ width: '100%', height: 300, objectFit: 'cover', objectPosition: 'top', display: 'block' }}
-              />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-            {[
-              { icon: <TrendingUp size={16} />, label: 'DRE', sub: 'em tempo real' },
-              { icon: <ArrowLeftRight size={16} />, label: 'Fluxo de Caixa', sub: 'diário' },
-              { icon: <Landmark size={16} />, label: 'Conciliação', sub: 'bancária' },
-              { icon: <Receipt size={16} />, label: 'Contas', sub: 'a pagar/receber' },
-            ].map(({ icon, label, sub }) => (
-              <div
-                key={label}
-                style={{
-                  background: '#fff',
-                  border: '1px solid #e0e8ff',
-                  borderRadius: 8,
-                  padding: '12px 14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                }}
-              >
-                <div
-                  style={{
-                    width: 28,
-                    height: 28,
-                    background: primaryLight,
-                    borderRadius: 6,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: primary,
-                    flexShrink: 0,
-                  }}
-                >
-                  {icon}
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700 }}>{label}</div>
-                  <div style={{ fontSize: 11, color: '#888' }}>{sub}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section style={{ padding: '80px 24px' }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-          <p
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: '#bbb',
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              marginBottom: 16,
-            }}
-          >
-            COMO FUNCIONA
-          </p>
-          <h2
-            style={{
-              fontSize: 40,
-              fontWeight: 900,
-              lineHeight: 1.15,
-              letterSpacing: '-0.02em',
-              margin: '0 0 36px',
-            }}
-          >
-            Tudo que você precisa ver,<br />quando você precisa ver.
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {[
-              {
-                src: '/fluvia-dre.png',
-                title: 'DRE automático',
-                desc: 'Resultado do mês disponível a qualquer hora. Sem esperar o contador.',
-              },
-              {
-                src: '/fluvia-receivables.png',
-                title: 'Fluxo de caixa em tempo real',
-                desc: 'Entradas e saídas do dia. Decida com número, não com intuição.',
-              },
-              {
-                src: '/fluvia-reconciliation.png',
-                title: 'Conciliação bancária',
-                desc: 'Importe o extrato. O Fluvia cruza com seus lançamentos automaticamente.',
-              },
-            ].map(({ src, title, desc }) => (
-              <div
-                key={title}
-                style={{
-                  display: 'flex',
-                  gap: 24,
-                  alignItems: 'center',
-                  padding: 20,
-                  background: '#f8f9fb',
-                  borderRadius: 10,
-                }}
-              >
-                <img
-                  src={src}
-                  alt={title}
-                  width={120}
-                  height={80}
-                  style={{ width: 120, height: 80, objectFit: 'cover', objectPosition: 'top', borderRadius: 6, flexShrink: 0 }}
-                />
-                <div>
-                  <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>{title}</div>
-                  <div style={{ fontSize: 14, color: '#777', lineHeight: 1.55 }}>{desc}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* Solution + Features unified */}
+      <FluviaSolutionSection primary={primary} primaryLight={primaryLight} />
 
       {/* CTA Final */}
       <section

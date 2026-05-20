@@ -60,5 +60,7 @@ const themes: Record<string, AppTheme> = {
 export function getAppTheme(): AppTheme {
   const hostname = window.location.hostname;
   if (hostname.includes('velio')) return themes.velio;
+  // Dev override: ?theme=velio in URL (e.g. /landing?theme=velio)
+  if (typeof window !== 'undefined' && window.location.search.includes('theme=velio')) return themes.velio;
   return themes.fluvia;
 }
