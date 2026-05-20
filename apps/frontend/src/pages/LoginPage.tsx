@@ -15,11 +15,11 @@ export function LoginPage() {
       {/* ── Painel esquerdo — identidade do app ── */}
       <div
         style={{
-          width: '42%',
+          width: 'min(50%, 560px)',
           background: theme.gradient,
           display: 'flex',
           flexDirection: 'column',
-          padding: '24px 22px',
+          padding: '32px 28px',
           position: 'relative',
           overflow: 'hidden',
         }}
@@ -81,30 +81,31 @@ export function LoginPage() {
       <div
         style={{
           flex: 1,
-          background: '#ffffff',
+          background: '#f8f9fb',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '32px 28px',
+          padding: '52px 48px',
         }}
       >
-        <div style={{ width: '100%', maxWidth: 360 }}>
+        <div style={{ width: '100%', maxWidth: 400 }}>
           {/* Logo Prymeira — tamanho completo */}
           <img
             src={prymeiraLogo}
             alt="Prymeira"
-            style={{ height: 24, display: 'block', marginBottom: 24 }}
+            style={{ height: 22, display: 'block', marginBottom: 28 }}
           />
 
           <h1
             style={{
               fontFamily: "'Sora', sans-serif",
-              fontSize: 22,
+              fontSize: 24,
               fontWeight: 700,
-              color: '#111111',
-              margin: '0 0 6px',
-              letterSpacing: '-0.02em',
+              color: '#0f172a',
+              margin: '0 0 8px',
+              letterSpacing: '-0.025em',
+              lineHeight: 1.2,
             }}
           >
             Acesso à Plataforma
@@ -112,21 +113,15 @@ export function LoginPage() {
           <p
             style={{
               fontFamily: "'Inter', sans-serif",
-              fontSize: 13,
-              color: '#999999',
-              margin: '0 0 24px',
-              lineHeight: 1.5,
+              fontSize: 14,
+              color: '#94a3b8',
+              margin: '0 0 32px',
+              lineHeight: 1.55,
             }}
           >
             Entre com sua conta Prymeira para validar seus produtos.
           </p>
 
-          {/*
-           * Clerk SignIn:
-           * - card e header ocultados (usamos nosso próprio heading acima)
-           * - colorPrimary define a cor do botão "Continuar" por app
-           * - clerkButtonTextColor define a cor do texto do botão
-           */}
           <SignIn
             routing="hash"
             signUpUrl="#/sign-up"
@@ -134,17 +129,38 @@ export function LoginPage() {
             appearance={{
               variables: {
                 colorPrimary: theme.clerkPrimaryColor,
+                colorBackground: '#f8f9fb',
+                colorInputBackground: '#ffffff',
+                colorInputText: '#0f172a',
+                colorText: '#0f172a',
+                colorTextSecondary: '#64748b',
+                borderRadius: '10px',
+                fontSize: '14px',
               },
               elements: {
                 rootBox: { width: '100%' },
                 card: {
                   boxShadow: 'none',
                   background: 'transparent',
+                  border: 'none',
                   padding: '0',
                   width: '100%',
                 },
                 header: { display: 'none' },
-                formButtonPrimary: { color: theme.clerkButtonTextColor },
+                formButtonPrimary: {
+                  color: theme.clerkButtonTextColor,
+                  fontWeight: '700',
+                },
+                socialButtonsBlockButton: {
+                  border: '1px solid #e2e8f0',
+                  background: '#ffffff',
+                },
+                formFieldInput: {
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                },
+                footer: { background: 'transparent' },
+                footerAction: { background: 'transparent' },
               },
             }}
           />
