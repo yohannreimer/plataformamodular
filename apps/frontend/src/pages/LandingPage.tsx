@@ -131,7 +131,7 @@ function FluviaSolutionSection({ primary, primaryLight }: { primary: string; pri
         </p>
 
         {/* Browser bezel */}
-        <div style={{ background: '#fff', border: '1px solid #dde4f0', borderRadius: 16, overflow: 'hidden', boxShadow: '0 8px 40px rgba(10,61,107,0.13)' }}>
+        <div style={{ background: '#fff', border: '1px solid #dde4f0', borderRadius: 16, overflow: 'hidden', boxShadow: '0 32px 80px rgba(10,61,107,0.18), 0 8px 24px rgba(10,61,107,0.08)' }}>
           {/* Chrome bar */}
           <div style={{ background: '#1e2535', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f57' }} />
@@ -151,12 +151,12 @@ function FluviaSolutionSection({ primary, primaryLight }: { primary: string; pri
               }}
             />
           </div>
-          {/* Screenshot */}
+          {/* Screenshot — full height, no crop */}
           <img
             key={feature.src}
             src={feature.src}
             alt={feature.label}
-            style={{ width: '100%', height: 460, objectFit: 'cover', objectPosition: 'top', display: 'block' }}
+            style={{ width: '100%', height: 'auto', display: 'block' }}
           />
           {/* Label bar */}
           <div style={{ padding: '16px 24px', borderTop: `3px solid ${primary}`, display: 'flex', alignItems: 'center', gap: 14, background: '#fff' }}>
@@ -205,6 +205,30 @@ function FluviaLandingPage() {
   const accent = '#f0c040';
   const signUpUrl = '/';
 
+  const stats = [
+    { num: '5 min', label: 'para ver o lucro do mês' },
+    { num: '100%', label: 'sem instalar nada' },
+    { num: 'grátis', label: 'para começar agora' },
+  ];
+
+  const painCards = [
+    {
+      num: '01',
+      title: 'DRE chega semanas depois',
+      sub: 'Do contador. Em PDF. Quando o mês já foi.',
+    },
+    {
+      num: '02',
+      title: 'Fluxo de caixa no Excel',
+      sub: 'Três abas, dois computadores, zero confiança.',
+    },
+    {
+      num: '03',
+      title: 'Decisões grandes no chute',
+      sub: 'Contratar, investir, cortar. Sem dado nenhum.',
+    },
+  ];
+
   return (
     <div
       style={{
@@ -213,15 +237,26 @@ function FluviaLandingPage() {
         lineHeight: 1.5,
       }}
     >
+      <style>{`
+        @keyframes fluviaFadeUp {
+          from { opacity: 0; transform: translateY(12px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .fluvia-cta-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(10,61,107,0.38) !important; }
+        .fluvia-accent-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(240,192,64,0.45) !important; }
+        .fluvia-pill-nav:hover { opacity: 0.85; }
+      `}</style>
+
       {/* Navbar */}
       <nav
         style={{
-          background: '#fff',
+          background: 'rgba(255,255,255,0.88)',
+          backdropFilter: 'blur(12px)',
           padding: '12px 24px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          borderBottom: '1px solid #f0f0f0',
+          borderBottom: '1px solid rgba(0,0,0,0.06)',
           position: 'sticky',
           top: 0,
           zIndex: 50,
@@ -230,14 +265,14 @@ function FluviaLandingPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div
             style={{
-              width: 22,
-              height: 22,
-              background: `linear-gradient(135deg, ${primary}, #1565c0)`,
-              borderRadius: 5,
+              width: 26,
+              height: 26,
+              background: 'linear-gradient(135deg, #0a3d6b 0%, #1e6fba 100%)',
+              borderRadius: 7,
             }}
           />
-          <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.02em' }}>Fluvia</span>
-          <span style={{ fontSize: 11, color: '#bbb', marginLeft: 4 }}>by Prymeira</span>
+          <span style={{ fontSize: 17, fontWeight: 900, letterSpacing: '-0.03em' }}>Fluvia</span>
+          <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 4 }}>by Prymeira</span>
         </div>
         <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
           <a href="/" style={{ fontSize: 13, color: '#666', textDecoration: 'none' }}>Entrar</a>
@@ -246,10 +281,10 @@ function FluviaLandingPage() {
             style={{
               background: primary,
               color: '#fff',
-              borderRadius: 6,
-              padding: '7px 16px',
+              borderRadius: 8,
+              padding: '8px 18px',
               fontSize: 13,
-              fontWeight: 600,
+              fontWeight: 700,
               textDecoration: 'none',
             }}
           >
@@ -258,8 +293,13 @@ function FluviaLandingPage() {
         </div>
       </nav>
 
-      {/* Hero — split 50/50 */}
-      <section style={{ background: '#fff', padding: '72px 24px 64px' }}>
+      {/* Hero */}
+      <section
+        style={{
+          background: 'radial-gradient(ellipse 85% 75% at 72% 50%, #c8ddf5 0%, #e2eef9 28%, #f0f5fb 55%, #f8fafe 100%)',
+          padding: '88px 24px 80px',
+        }}
+      >
         <div
           style={{
             maxWidth: 1100,
@@ -271,69 +311,69 @@ function FluviaLandingPage() {
           }}
         >
           <div>
-            <div
-              style={{
-                display: 'inline-block',
-                background: primaryLight,
-                borderRadius: 20,
-                padding: '4px 14px',
-                marginBottom: 18,
-              }}
-            >
-              <span style={{ fontSize: 12, color: primary, fontWeight: 700, letterSpacing: '0.04em' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 22 }}>
+              <div style={{ width: 5, height: 5, borderRadius: '50%', background: primary }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: primary, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                 Para donos de PME
               </span>
             </div>
             <h1
               style={{
-                fontSize: 52,
+                fontSize: 'clamp(48px, 5.2vw, 72px)',
                 fontWeight: 900,
-                lineHeight: 1.05,
-                letterSpacing: '-0.03em',
-                margin: '0 0 16px',
+                lineHeight: 1.0,
+                letterSpacing: '-0.04em',
+                margin: '0 0 22px',
               }}
             >
-              Empresa não quebra<br />por falta de produto.
+              Empresa não quebra<br />por falta de produto<span style={{ color: accent }}>.</span>
             </h1>
-            <p style={{ fontSize: 17, color: '#555', lineHeight: 1.65, margin: '0 0 28px' }}>
-              Quebra porque o dono não olha os números.<br />O Fluvia muda isso.
+            <p style={{ fontSize: 18, color: '#4a5568', lineHeight: 1.72, margin: '0 0 36px', maxWidth: 420 }}>
+              Quebra porque o dono não olha os números. O Fluvia muda isso.
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <a
                 href={signUpUrl}
+                className="fluvia-cta-btn"
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
+                  gap: 8,
                   background: primary,
                   color: '#fff',
-                  borderRadius: 8,
-                  padding: '14px 28px',
-                  fontSize: 15,
-                  fontWeight: 700,
+                  borderRadius: 10,
+                  padding: '15px 32px',
+                  fontSize: 16,
+                  fontWeight: 800,
                   textDecoration: 'none',
                   width: 'fit-content',
+                  boxShadow: '0 8px 24px rgba(10,61,107,0.3)',
+                  letterSpacing: '-0.01em',
+                  transition: 'transform 0.15s, box-shadow 0.15s',
                 }}
               >
                 Criar conta grátis →
               </a>
-              <span style={{ fontSize: 13, color: '#999' }}>✓ Grátis pra começar · Sem cartão</span>
+              <div style={{ fontSize: 13, color: '#64748b', display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span> Grátis pra começar
+                <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span> Sem cartão
+              </div>
             </div>
           </div>
 
           <div style={{ position: 'relative' }}>
             <div
               style={{
-                borderRadius: 12,
+                borderRadius: 14,
                 overflow: 'hidden',
-                transform: 'perspective(800px) rotateY(-8deg) rotateX(3deg)',
-                boxShadow: '8px 8px 40px rgba(10,61,107,0.18)',
+                transform: 'perspective(900px) rotateY(-12deg) rotateX(4deg)',
+                boxShadow: '28px 32px 80px rgba(10,61,107,0.28), 0 4px 16px rgba(10,61,107,0.08)',
               }}
             >
               <div
                 style={{
                   background: primary,
-                  height: 32,
+                  height: 34,
                   display: 'flex',
                   alignItems: 'center',
                   padding: '0 16px',
@@ -349,103 +389,133 @@ function FluviaLandingPage() {
                 src="/fluvia-hero-dashboard.png"
                 alt="Dashboard Fluvia"
                 width={600}
-                height={200}
-                style={{ width: '100%', height: 200, objectFit: 'cover', objectPosition: 'top', display: 'block' }}
+                height={230}
+                style={{ width: '100%', height: 230, objectFit: 'cover', objectPosition: 'top', display: 'block' }}
               />
             </div>
             <div
               style={{
                 position: 'absolute',
-                bottom: -20,
+                bottom: -28,
                 right: -20,
                 background: '#fff',
-                border: '1px solid #e0e8ff',
-                borderRadius: 10,
-                padding: '10px 16px',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                border: '1px solid rgba(10,61,107,0.08)',
+                borderRadius: 14,
+                padding: '14px 22px',
+                boxShadow: '0 12px 36px rgba(0,0,0,0.13)',
               }}
             >
-              <div style={{ fontSize: 11, color: '#888', marginBottom: 2 }}>Lucro este mês</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#16a34a' }}>+R$12.400</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
+                Lucro este mês
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: '#16a34a', letterSpacing: '-0.03em' }}>+R$12.400</div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Trust bar */}
-      <div
-        style={{
-          background: '#f8f9fb',
-          padding: '16px 24px',
-          borderTop: '1px solid #f0f0f0',
-          borderBottom: '1px solid #f0f0f0',
-          textAlign: 'center',
-        }}
-      >
-        <p
+      {/* Stats bar */}
+      <div style={{ background: primary, padding: '20px 24px' }}>
+        <div
           style={{
-            fontSize: 11,
-            color: '#bbb',
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            margin: '0 0 10px',
+            maxWidth: 1100,
+            margin: '0 auto',
+            display: 'flex',
+            justifyContent: 'center',
+            gap: 56,
+            alignItems: 'center',
           }}
         >
-          Usado por PMEs em todo o Brasil
-        </p>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 24, alignItems: 'center' }}>
-          {[48, 38, 56, 42, 50].map((w, i) => (
-            <div key={i} style={{ width: w, height: 12, background: '#ddd', borderRadius: 3 }} />
+          {stats.map((s, i) => (
+            <div key={s.num} style={{ display: 'flex', alignItems: 'center', gap: 56 }}>
+              {i > 0 && (
+                <div style={{ width: 1, height: 32, background: 'rgba(255,255,255,0.12)' }} />
+              )}
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 900, color: accent, letterSpacing: '-0.02em' }}>{s.num}</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 3 }}>{s.label}</div>
+              </div>
+            </div>
           ))}
         </div>
       </div>
 
       {/* Problem */}
-      <section style={{ padding: '80px 24px' }}>
+      <section style={{ padding: '96px 24px', background: '#fafbfc' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <p
             style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: '#bbb',
-              letterSpacing: '0.1em',
+              fontSize: 11,
+              fontWeight: 800,
+              color: '#cbd5e1',
+              letterSpacing: '0.14em',
               textTransform: 'uppercase',
-              marginBottom: 16,
+              marginBottom: 24,
             }}
           >
             O PROBLEMA
           </p>
-          <h2
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 40, alignItems: 'start', marginBottom: 64 }}>
+            <div
+              style={{
+                fontSize: 'clamp(80px, 9vw, 130px)',
+                fontWeight: 900,
+                letterSpacing: '-0.06em',
+                color: primary,
+                lineHeight: 1,
+                opacity: 0.10,
+                userSelect: 'none',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              73%
+            </div>
+            <div style={{ paddingTop: 12 }}>
+              <h2
+                style={{
+                  fontSize: 'clamp(32px, 3.2vw, 46px)',
+                  fontWeight: 900,
+                  lineHeight: 1.1,
+                  letterSpacing: '-0.03em',
+                  margin: '0 0 14px',
+                }}
+              >
+                73% dos donos de PME não sabem o lucro{' '}
+                <span style={{ color: primary }}>do mês anterior.</span>
+              </h2>
+              <p style={{ fontSize: 17, color: '#64748b', lineHeight: 1.7, maxWidth: 520, margin: 0 }}>
+                E não é por falta de inteligência. É porque o financeiro ficou espalhado entre WhatsApp, planilha e o contador.
+              </p>
+            </div>
+          </div>
+
+          {/* Pain cards */}
+          <div
             style={{
-              fontSize: 44,
-              fontWeight: 900,
-              lineHeight: 1.1,
-              letterSpacing: '-0.02em',
-              margin: '0 0 12px',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              borderRadius: 12,
+              overflow: 'hidden',
             }}
           >
-            73% dos donos de PME não sabem<br />o lucro{' '}
-            <em style={{ color: primary, fontStyle: 'normal' }}>do mês anterior.</em>
-          </h2>
-          <p style={{ fontSize: 16, color: '#666', marginBottom: 36, lineHeight: 1.6 }}>
-            E não é por falta de inteligência. É porque o financeiro ficou espalhado.
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <PainCard
-              icon={<AlertCircle size={18} />}
-              title="DRE chega semanas depois"
-              sub="Do contador. Em PDF. Quando o mês já foi."
-            />
-            <PainCard
-              icon={<FileSpreadsheet size={18} />}
-              title="Fluxo de caixa no Excel"
-              sub="Três abas, dois computadores, zero confiança."
-            />
-            <PainCard
-              icon={<Flag size={18} />}
-              title="Decisões grandes no chute"
-              sub="Contratar, investir, cortar — sem dado nenhum."
-            />
+            {painCards.map((card) => (
+              <div
+                key={card.num}
+                style={{
+                  background: '#fff5f5',
+                  border: '1px solid #fde0e0',
+                  padding: '32px 28px',
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#dc2626', letterSpacing: '0.1em', marginBottom: 20 }}>
+                  {card.num}
+                </div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: '#111', lineHeight: 1.3, marginBottom: 10 }}>
+                  {card.title}
+                </div>
+                <div style={{ fontSize: 14, color: '#888', lineHeight: 1.65 }}>{card.sub}</div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -457,42 +527,58 @@ function FluviaLandingPage() {
       <section
         style={{
           background: 'linear-gradient(160deg, #05192d, #0a3d6b)',
-          padding: '88px 24px',
+          position: 'relative',
+          overflow: 'hidden',
+          padding: '104px 24px',
           textAlign: 'center',
         }}
       >
-        <h2
+        <div
           style={{
-            fontSize: 44,
-            fontWeight: 900,
-            color: '#fff',
-            lineHeight: 1.15,
-            letterSpacing: '-0.02em',
-            margin: '0 0 12px',
+            position: 'absolute',
+            inset: 0,
+            backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px)',
+            backgroundSize: '28px 28px',
+            pointerEvents: 'none',
           }}
-        >
-          Comece hoje.<br />Em 5 minutos você já sabe<br />
-          <span style={{ color: accent }}>onde está o dinheiro.</span>
-        </h2>
-        <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.45)', margin: '0 0 28px' }}>
-          Grátis pra começar. Sem cartão de crédito.
-        </p>
-        <a
-          href={signUpUrl}
-          style={{
-            display: 'inline-flex',
-            background: accent,
-            borderRadius: 8,
-            padding: '14px 32px',
-            fontSize: 16,
-            fontWeight: 800,
-            color: '#111',
-            textDecoration: 'none',
-            boxShadow: '0 4px 20px rgba(240,192,64,0.35)',
-          }}
-        >
-          Criar conta grátis →
-        </a>
+        />
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <h2
+            style={{
+              fontSize: 'clamp(36px, 4vw, 56px)',
+              fontWeight: 900,
+              color: '#fff',
+              lineHeight: 1.1,
+              letterSpacing: '-0.03em',
+              margin: '0 0 18px',
+            }}
+          >
+            Comece hoje.<br />Em 5 minutos você já sabe<br />
+            <span style={{ color: accent }}>onde está o dinheiro.</span>
+          </h2>
+          <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.38)', margin: '0 0 36px' }}>
+            Grátis pra começar. Sem cartão de crédito.
+          </p>
+          <a
+            href={signUpUrl}
+            className="fluvia-accent-btn"
+            style={{
+              background: accent,
+              borderRadius: 10,
+              padding: '16px 40px',
+              fontSize: 17,
+              fontWeight: 900,
+              color: '#0a0a0a',
+              textDecoration: 'none',
+              display: 'inline-flex',
+              letterSpacing: '-0.01em',
+              boxShadow: '0 8px 32px rgba(240,192,64,0.32)',
+              transition: 'transform 0.15s, box-shadow 0.15s',
+            }}
+          >
+            Criar conta grátis →
+          </a>
+        </div>
       </section>
 
       {/* Footer */}
