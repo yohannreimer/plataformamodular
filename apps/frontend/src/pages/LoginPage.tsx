@@ -150,14 +150,26 @@ export function LoginPage() {
                 formButtonPrimary: {
                   color: theme.clerkButtonTextColor,
                   fontWeight: '700',
+                  padding: '13px 20px',
+                  height: '46px',
+                  fontSize: '14px',
                 },
                 socialButtonsBlockButton: {
                   border: '1px solid #e2e8f0',
                   background: '#ffffff',
+                  padding: '12px 20px',
+                  height: '44px',
+                  gap: '10px',
+                },
+                socialButtonsBlockButtonText: {
+                  fontSize: '14px',
+                  fontWeight: '500',
                 },
                 formFieldInput: {
                   background: '#ffffff',
                   border: '1px solid #e2e8f0',
+                  height: '42px',
+                  padding: '0 14px',
                 },
                 footer: { background: 'transparent' },
                 footerAction: { background: 'transparent' },
