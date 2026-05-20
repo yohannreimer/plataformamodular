@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { productBrowserTitleForHostname, productEntryPathForHostname } from './urls';
+import { productAccessDeniedUrl, productBrowserTitleForHostname, productEntryPathForHostname } from './urls';
 
 describe('productEntryPathForHostname', () => {
   test('routes public product domains straight to their modules', () => {
@@ -23,5 +23,16 @@ describe('productBrowserTitleForHostname', () => {
 
   test('keeps a neutral title outside product domains', () => {
     expect(productBrowserTitleForHostname('localhost')).toBe('Prymeira Apps');
+  });
+});
+
+describe('productAccessDeniedUrl', () => {
+  test('points blocked products to the central Hub access page', () => {
+    expect(productAccessDeniedUrl('financeiro', {
+      reason: 'no_entitlement',
+      returnUrl: 'https://fluvia.prymeiradigital.com.br/m/financeiro'
+    })).toBe(
+      'https://hub.prymeiradigital.com.br/acesso-negado?product_key=financeiro&reason=no_entitlement&return_url=https%3A%2F%2Ffluvia.prymeiradigital.com.br%2Fm%2Ffinanceiro'
+    );
   });
 });

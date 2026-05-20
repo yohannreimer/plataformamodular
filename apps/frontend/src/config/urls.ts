@@ -4,6 +4,24 @@ export const PRYMEIRA_HUB_URL = (
   readRuntimeConfig('VITE_PRYMEIRA_HUB_URL') ?? 'https://hub.prymeiradigital.com.br'
 ).replace(/\/$/, '');
 
+type ProductAccessDeniedUrlOptions = {
+  reason?: string;
+  returnUrl?: string;
+};
+
+export function productAccessDeniedUrl(productKey: string, options: ProductAccessDeniedUrlOptions = {}) {
+  const params = new URLSearchParams({
+    product_key: productKey,
+    reason: options.reason ?? 'no_entitlement'
+  });
+
+  if (options.returnUrl) {
+    params.set('return_url', options.returnUrl);
+  }
+
+  return `${PRYMEIRA_HUB_URL}/acesso-negado?${params.toString()}`;
+}
+
 export function productEntryPathForHostname(hostname: string) {
   const normalized = hostname.trim().toLowerCase();
 

@@ -1,6 +1,7 @@
+import { useEffect, useMemo } from 'react';
 import { Lock, ArrowLeft } from 'lucide-react';
 import prymeiraLogo from '../assets/prymeira-logo.png';
-import { PRYMEIRA_HUB_URL } from '../config/urls';
+import { productAccessDeniedUrl } from '../config/urls';
 
 const PRODUCT_LABELS: Record<string, string> = {
   orquestrador: 'Velio',
@@ -14,6 +15,15 @@ type NoProductAccessPageProps = {
 
 export function NoProductAccessPage({ productKey, onLogout }: NoProductAccessPageProps) {
   const productName = PRODUCT_LABELS[productKey] ?? productKey;
+  const hubAccessUrl = useMemo(() => productAccessDeniedUrl(productKey, {
+    reason: 'no_entitlement',
+    returnUrl: window.location.href
+  }), [productKey]);
+
+  useEffect(() => {
+    if (import.meta.env.MODE === 'test') return;
+    window.location.assign(hubAccessUrl);
+  }, [hubAccessUrl]);
 
   return (
     <div className="no-access-page">
@@ -28,9 +38,9 @@ export function NoProductAccessPage({ productKey, onLogout }: NoProductAccessPag
         <p className="no-access-page__eyebrow">Produto bloqueado</p>
         <h1>{productName}</h1>
         <p>
-          Sua conta está autenticada, mas a Prymeira Account ainda não liberou esse produto para este usuário.
+          Sua conta está autenticada, mas a Prymeira Account ainda não liberou esse produto. Estamos levando você ao Hub para revisar o acesso.
         </p>
-        <a href={PRYMEIRA_HUB_URL} className="no-access-page__back">
+        <a href={hubAccessUrl} className="no-access-page__back">
           <ArrowLeft size={15} strokeWidth={1.9} />
           Voltar ao Hub
         </a>
