@@ -6678,6 +6678,54 @@ test('OFX approval rejects unsafe client decisions before writes', async () => {
     assert.equal(omittedCompanyPreviewRes.body.items[0].decision_type, 'needs_review');
     db.prepare("update financial_payable set status = 'canceled' where id = ?").run('payable-company-b-atlas');
 
+    db.prepare(`
+      insert into financial_transaction (
+        id,
+        organization_id,
+        company_id,
+        financial_account_id,
+        kind,
+        status,
+        amount_cents,
+        issue_date,
+        due_date,
+        source,
+        note,
+        created_by,
+        created_at,
+        updated_at,
+        is_deleted
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    `).run(
+      'ftxn-company-b-atlas',
+      'org-holand',
+      'company-b',
+      scopedAccountId,
+      'expense',
+      'open',
+      2200,
+      '2026-05-24',
+      '2026-05-24',
+      'manual',
+      'ATLAS CLOUD',
+      'test',
+      '2026-05-24T12:00:00.000Z',
+      '2026-05-24T12:00:00.000Z'
+    );
+    const crossCompanyLedgerPreviewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: scopedAccountId,
+        source_file_name: 'ledger-cross-company.ofx',
+        source_file_size_bytes: 256,
+        ofx_text: ofxText
+      });
+    assert.equal(crossCompanyLedgerPreviewRes.status, 200, JSON.stringify(crossCompanyLedgerPreviewRes.body));
+    assert.equal(crossCompanyLedgerPreviewRes.body.company_id, 'company-a');
+    assert.equal(crossCompanyLedgerPreviewRes.body.items[0].decision_type, 'needs_review');
+    assert.equal(crossCompanyLedgerPreviewRes.body.items[0].target.financial_transaction_id, undefined);
+
     const ledgerARes = await request(app)
       .post('/finance/transactions')
       .set('Authorization', `Bearer ${token}`)

@@ -5117,6 +5117,17 @@ function companyMatchesResource(resourceCompanyId: string | null, companyId: str
   return !companyId || !resourceCompanyId || resourceCompanyId === companyId;
 }
 
+function listCompanyCompatibleTransactionIds(organizationId: string, companyId: string | null) {
+  if (!companyId) return null;
+  const rows = db.prepare(`
+    select id
+    from financial_transaction
+    where organization_id = ?
+      and (company_id is null or company_id = ?)
+  `).all(organizationId, companyId) as Array<{ id: string }>;
+  return new Set(rows.map((row) => row.id));
+}
+
 export function previewFinanceOfxReconciliation(input: FinanceOfxPreviewRequest): FinanceOfxPreviewDto {
   const normalizedOrganizationId = resolveOrganizationId(input.organization_id);
   readOrganizationRow(normalizedOrganizationId);
@@ -5133,6 +5144,7 @@ export function previewFinanceOfxReconciliation(input: FinanceOfxPreviewRequest)
     source_file_name: input.source_file_name,
     ofx_text: input.ofx_text
   });
+  const companyCompatibleTransactionIds = listCompanyCompatibleTransactionIds(normalizedOrganizationId, companyId);
 
   const items = buildFinanceReconciliationDraftItems({
     financial_account_id: input.financial_account_id,
@@ -5148,7 +5160,10 @@ export function previewFinanceOfxReconciliation(input: FinanceOfxPreviewRequest)
         && (!receivable.financial_account_id || receivable.financial_account_id === input.financial_account_id)
       )),
     transactions: listFinanceTransactions(normalizedOrganizationId).transactions
-      .filter((transaction) => !transaction.financial_account_id || transaction.financial_account_id === input.financial_account_id),
+      .filter((transaction) => (
+        (!companyCompatibleTransactionIds || companyCompatibleTransactionIds.has(transaction.id))
+        && (!transaction.financial_account_id || transaction.financial_account_id === input.financial_account_id)
+      )),
     memories: readReconciliationMemories(normalizedOrganizationId, input.financial_account_id, companyId),
     duplicateHashes: buildOfxDuplicateHashes({
       organization_id: normalizedOrganizationId,
