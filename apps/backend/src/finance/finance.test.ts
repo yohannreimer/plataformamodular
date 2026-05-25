@@ -3811,6 +3811,44 @@ test('GET /finance/overview bloqueia usuário não supremo mesmo com permissão 
   }
 });
 
+test('local auth bypass allows finance requests without Clerk or internal token only in dev', async () => {
+  const dbPath = assignTestDbPath('finance-local-auth-bypass');
+  cleanupDbFiles(dbPath);
+  const originalBypass = process.env.LOCAL_AUTH_BYPASS;
+  const originalNodeEnv = process.env.NODE_ENV;
+  process.env.LOCAL_AUTH_BYPASS = '1';
+  process.env.NODE_ENV = 'development';
+
+  const app = createApp({
+    forceDbRefresh: true,
+    seedDb: true,
+    enforceInternalAuth: true,
+    enforceAccountProductAccess: true
+  });
+
+  try {
+    const res = await request(app)
+      .get('/finance/reconciliation/inbox')
+      .set('Host', 'localhost:4000');
+
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.organization_id, 'org-holand');
+  } finally {
+    if (originalBypass === undefined) {
+      delete process.env.LOCAL_AUTH_BYPASS;
+    } else {
+      process.env.LOCAL_AUTH_BYPASS = originalBypass;
+    }
+    if (originalNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+    db.close();
+    cleanupDbFiles(dbPath);
+  }
+});
+
 test('GET /finance/context returns only tenant organization context without company selector', async () => {
   const dbPath = assignTestDbPath('finance-context-route');
   cleanupDbFiles(dbPath);

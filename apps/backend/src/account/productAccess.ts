@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { checkAccountProductAccess, type AccountProductKey } from './client.js';
+import { isLocalDevAuthBypassEnabled } from '../localDevAuth.js';
 
 const PUBLIC_PREFIXES = ['/auth/', '/portal/api'];
 
@@ -31,6 +32,16 @@ export function resolveAccountProductForRequest(req: Request): AccountProductKey
 export async function requireAccountProductAccess(req: Request, res: Response, next: NextFunction) {
   const productKey = resolveAccountProductForRequest(req);
   if (!productKey) {
+    return next();
+  }
+
+  if (isLocalDevAuthBypassEnabled(req)) {
+    res.locals.prymeiraAccountAccess = {
+      allowed: true,
+      product_key: productKey,
+      status: 'active',
+      reason: 'local_auth_bypass'
+    };
     return next();
   }
 

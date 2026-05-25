@@ -1,6 +1,7 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { db, uuid } from './db.js';
+import { isLocalDevAuthBypassEnabled } from './localDevAuth.js';
 
 export const INTERNAL_ROLE_VALUES = ['supremo', 'intermediario', 'junior', 'custom'] as const;
 export type InternalRole = (typeof INTERNAL_ROLE_VALUES)[number];
@@ -842,7 +843,26 @@ export function extractInternalBearerToken(req: Request): string | null {
   return readBearerToken(req.header('authorization'));
 }
 
+function buildLocalDevAuthContext(): InternalAuthContext {
+  return {
+    internal_user_id: 'local-dev-user',
+    username: 'local.dev@prymeira.test',
+    display_name: 'Dev Finance',
+    role: 'supremo',
+    permissions: [...INTERNAL_PERMISSION_KEYS],
+    organization_id: 'org-holand',
+    preferences: {
+      calendar_vivid_mode: false
+    }
+  };
+}
+
 export function attachInternalAuthIfPresent(req: Request, res: Response, next: NextFunction) {
+  if (isLocalDevAuthBypassEnabled(req)) {
+    (res.locals as { internal?: InternalAuthContext }).internal = buildLocalDevAuthContext();
+    return next();
+  }
+
   const token = extractInternalBearerToken(req);
   if (!token) {
     return next();
@@ -860,6 +880,11 @@ export function attachInternalAuthIfPresent(req: Request, res: Response, next: N
 }
 
 export function requireInternalAuth(req: Request, res: Response, next: NextFunction) {
+  if (isLocalDevAuthBypassEnabled(req)) {
+    (res.locals as { internal?: InternalAuthContext }).internal = buildLocalDevAuthContext();
+    return next();
+  }
+
   const token = extractInternalBearerToken(req);
   if (!token) {
     return res.status(401).json({ message: 'Token de autenticação obrigatório.' });

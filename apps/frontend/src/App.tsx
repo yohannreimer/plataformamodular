@@ -39,6 +39,11 @@ import {
 } from './auth/accountAccess';
 import { setClerkTokenGetter } from './auth/clerkToken';
 import {
+  createLocalDevAccountAccess,
+  createLocalDevSession,
+  isLocalAuthBypassEnabled
+} from './auth/localDevAuth';
+import {
   INTERNAL_AUTH_CHANGED_EVENT,
   hasAnyPermission,
   internalSessionStore,
@@ -284,8 +289,14 @@ function InternalApp() {
   const navigate = useNavigate();
   const location = useLocation();
   const productHostEntryPath = productEntryPathForHostname(window.location.hostname);
+  const localAuthBypass = isLocalAuthBypassEnabled(window.location.hostname);
 
   useEffect(() => {
+    if (localAuthBypass) {
+      setClerkTokenGetter(null);
+      return;
+    }
+
     if (!isSignedIn) {
       setClerkTokenGetter(null);
       return;
@@ -293,7 +304,7 @@ function InternalApp() {
 
     setClerkTokenGetter(() => getToken());
     return () => setClerkTokenGetter(null);
-  }, [getToken, isSignedIn]);
+  }, [getToken, isSignedIn, localAuthBypass]);
 
   useEffect(() => {
     const sync = () => setSession(internalSessionStore.read());
@@ -308,6 +319,18 @@ function InternalApp() {
   }, []);
 
   useEffect(() => {
+    if (localAuthBypass) {
+      const localSession = createLocalDevSession();
+      const localAccountAccess = createLocalDevAccountAccess();
+      internalSessionStore.save(localSession);
+      accountAccessStore.save(localAccountAccess);
+      setSession(localSession);
+      setAccountAccess(localAccountAccess);
+      setBootstrapError('');
+      setLoadingSession(false);
+      return;
+    }
+
     let cancelled = false;
     const current = internalSessionStore.read();
     if (!current || !isSignedIn) {
@@ -340,9 +363,16 @@ function InternalApp() {
     return () => {
       cancelled = true;
     };
-  }, [isSignedIn]);
+  }, [isSignedIn, localAuthBypass]);
 
   useEffect(() => {
+    if (localAuthBypass) {
+      bootstrappedClerkUserIdRef.current = 'local-dev-user';
+      window.sessionStorage.setItem(INTERNAL_TAB_INITIALIZED_KEY, '1');
+      setLoadingSession(false);
+      return;
+    }
+
     if (!clerkLoaded) return;
     if (!isSignedIn) {
       bootstrappedClerkUserIdRef.current = null;
@@ -405,7 +435,7 @@ function InternalApp() {
     return () => {
       cancelled = true;
     };
-  }, [clerkLoaded, isSignedIn, clerkUser, getToken, location.pathname, navigate, productHostEntryPath]);
+  }, [clerkLoaded, isSignedIn, clerkUser, getToken, location.pathname, navigate, productHostEntryPath, localAuthBypass]);
 
   function handleLogout() {
     api.internalLogout().catch(() => null).finally(() => {
@@ -487,11 +517,11 @@ function InternalApp() {
     return <p style={{ padding: '24px' }}>Carregando sessão...</p>;
   }
 
-  if (!clerkLoaded) {
+  if (!localAuthBypass && !clerkLoaded) {
     return <p style={{ padding: '24px' }}>Carregando autenticação...</p>;
   }
 
-  if (!isSignedIn) {
+  if (!localAuthBypass && !isSignedIn) {
     return <LoginPage />;
   }
 
