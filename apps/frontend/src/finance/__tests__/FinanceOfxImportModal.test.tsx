@@ -253,12 +253,15 @@ test('FinanceOfxImportModal lets reviewers edit financial fields before approval
   await user.click(screen.getByRole('button', { name: 'Gerar prévia' }));
 
   await screen.findByText('TARIFA BANCARIA');
-  await user.selectOptions(screen.getByLabelText('Entidade TARIFA BANCARIA'), 'entity-edited');
-  await user.selectOptions(screen.getByLabelText('Categoria TARIFA BANCARIA'), 'cat-edited');
-  await user.selectOptions(screen.getByLabelText('Centro de custo TARIFA BANCARIA'), 'cost-edited');
+  await user.clear(screen.getByLabelText('Entidade TARIFA BANCARIA'));
+  await user.type(screen.getByLabelText('Entidade TARIFA BANCARIA'), 'Fornecedor Editado');
+  await user.clear(screen.getByLabelText('Categoria TARIFA BANCARIA'));
+  await user.type(screen.getByLabelText('Categoria TARIFA BANCARIA'), 'Tarifas revisadas');
+  await user.clear(screen.getByLabelText('Centro de custo TARIFA BANCARIA'));
+  await user.type(screen.getByLabelText('Centro de custo TARIFA BANCARIA'), 'Financeiro');
   await user.selectOptions(screen.getByLabelText('Forma de pagamento TARIFA BANCARIA'), 'pm-edited');
-  await user.clear(screen.getByLabelText('Nota TARIFA BANCARIA'));
-  await user.type(screen.getByLabelText('Nota TARIFA BANCARIA'), 'Tarifa revisada');
+  await user.clear(screen.getByLabelText('Referência TARIFA BANCARIA'));
+  await user.type(screen.getByLabelText('Referência TARIFA BANCARIA'), 'Tarifa revisada');
   await user.click(screen.getByLabelText('Salvar memória TARIFA BANCARIA'));
 
   await user.click(screen.getByRole('button', { name: 'Aprovar lote' }));
@@ -269,11 +272,53 @@ test('FinanceOfxImportModal lets reviewers edit financial fields before approval
         expect.objectContaining({
           draft_item_id: 'ofx-line-1',
           financial_entity_id: 'entity-edited',
+          financial_entity_name: null,
           financial_category_id: 'cat-edited',
+          financial_category_name: null,
           financial_cost_center_id: 'cost-edited',
+          financial_cost_center_name: null,
           financial_payment_method_id: 'pm-edited',
           note: 'Tarifa revisada',
           save_memory: false
+        })
+      ])
+    }));
+  });
+});
+
+test('FinanceOfxImportModal sends typed names for inline catalog creation', async () => {
+  const user = userEvent.setup();
+  const { props } = renderModal({ entities: [], categories: [], costCenters: [] });
+  const ofxText = '<OFX><BANKTRANLIST><STMTTRN><DTPOSTED>20260524<TRNAMT>-5.70<MEMO>PISTA 3</STMTTRN></BANKTRANLIST></OFX>';
+
+  await user.selectOptions(screen.getByLabelText('Conta bancária'), 'acc-1');
+  await user.upload(screen.getByLabelText('Arquivo OFX'), new File([ofxText], 'pista.ofx', { type: 'application/x-ofx' }));
+  await user.click(screen.getByRole('button', { name: 'Gerar prévia' }));
+
+  await screen.findByText('TARIFA BANCARIA');
+  await user.clear(screen.getByLabelText('Entidade TARIFA BANCARIA'));
+  await user.type(screen.getByLabelText('Entidade TARIFA BANCARIA'), 'Pedágio');
+  await user.clear(screen.getByLabelText('Categoria TARIFA BANCARIA'));
+  await user.type(screen.getByLabelText('Categoria TARIFA BANCARIA'), 'Pedágio');
+  await user.clear(screen.getByLabelText('Centro de custo TARIFA BANCARIA'));
+  await user.type(screen.getByLabelText('Centro de custo TARIFA BANCARIA'), 'Operacional');
+  await user.clear(screen.getByLabelText('Referência TARIFA BANCARIA'));
+  await user.type(screen.getByLabelText('Referência TARIFA BANCARIA'), 'Pedágio');
+
+  await user.click(screen.getByRole('button', { name: 'Aprovar lote' }));
+
+  await waitFor(() => {
+    expect(props.onApprove).toHaveBeenCalledWith(expect.objectContaining({
+      approved_items: expect.arrayContaining([
+        expect.objectContaining({
+          draft_item_id: 'ofx-line-1',
+          financial_entity_id: null,
+          financial_entity_name: 'Pedágio',
+          financial_category_id: null,
+          financial_category_name: 'Pedágio',
+          financial_cost_center_id: null,
+          financial_cost_center_name: 'Operacional',
+          note: 'Pedágio'
         })
       ])
     }));
@@ -329,8 +374,11 @@ test('FinanceOfxImportModal previews file and approves checked items', async () 
           receivable_id: null,
           financial_transaction_id: null,
           financial_entity_id: null,
+          financial_entity_name: null,
           financial_category_id: 'cat-1',
+          financial_category_name: null,
           financial_cost_center_id: 'cost-1',
+          financial_cost_center_name: null,
           financial_payment_method_id: 'pm-1',
           note: 'TARIFA BANCARIA'
         },
@@ -343,10 +391,13 @@ test('FinanceOfxImportModal previews file and approves checked items', async () 
           receivable_id: 'recv-1',
           financial_transaction_id: 'txn-1',
           financial_entity_id: 'entity-1',
+          financial_entity_name: null,
           financial_category_id: 'cat-2',
+          financial_category_name: null,
           financial_cost_center_id: null,
+          financial_cost_center_name: null,
           financial_payment_method_id: null,
-          note: 'CLIENTE SOL'
+          note: 'Cliente Sol'
         }
       ]
     });

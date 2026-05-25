@@ -486,6 +486,7 @@ function selectMemory(
 function isMeaningfulMemoryPattern(memory: FinanceReconciliationMemoryCandidate) {
   const usefulTokens = usefulMemoryTokens(memory);
   if (usefulTokens.length >= 2) return true;
+  if (usefulTokens.some((token) => token.length >= 5)) return true;
   return false;
 }
 

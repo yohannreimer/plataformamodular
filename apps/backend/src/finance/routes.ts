@@ -421,8 +421,11 @@ const ofxApprovalItemSchema = z.object({
   receivable_id: z.string().trim().min(1).nullable().optional(),
   financial_transaction_id: z.string().trim().min(1).nullable().optional(),
   financial_entity_id: z.string().trim().min(1).nullable().optional(),
+  financial_entity_name: z.string().trim().min(2).max(160).nullable().optional(),
   financial_category_id: z.string().trim().min(1).nullable().optional(),
+  financial_category_name: z.string().trim().min(2).max(120).nullable().optional(),
   financial_cost_center_id: z.string().trim().min(1).nullable().optional(),
+  financial_cost_center_name: z.string().trim().min(2).max(120).nullable().optional(),
   financial_payment_method_id: z.string().trim().min(1).nullable().optional(),
   note: z.string().trim().max(2_000).nullable().optional()
 });

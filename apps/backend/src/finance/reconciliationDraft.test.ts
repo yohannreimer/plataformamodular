@@ -166,6 +166,42 @@ test('draft usa memoria para novo lançamento liquidado quando não há match ex
   assert.equal(items[0].proposed.save_memory, true);
 });
 
+test('draft sugere memoria por token util mesmo quando muda o numero da pista', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [ofxLineFixture({
+      description: 'Compra no débito - PISTA 4',
+      normalized_description: 'compra no debito pista 4',
+      amount_cents: -570,
+      dedupe_hash: 'hash-pista-4'
+    })],
+    payables: [],
+    receivables: [],
+    transactions: [],
+    duplicateHashes: new Set(),
+    memories: [{
+      id: 'mem-pedagio',
+      normalized_pattern: 'compra no debito pista 3',
+      direction: 'outflow',
+      financial_entity_id: 'entity-pedagio',
+      financial_entity_name: 'Pedágio',
+      financial_category_id: 'cat-pedagio',
+      financial_category_name: 'Pedágio',
+      financial_cost_center_id: 'cc-operacional',
+      financial_cost_center_name: 'Operacional',
+      financial_payment_method_id: null,
+      financial_payment_method_name: null,
+      usage_count: 1,
+      confidence_score: 0.86
+    }]
+  });
+
+  assert.equal(items[0].decision_type, 'new_transaction');
+  assert.equal(items[0].confidence_band, 'ready');
+  assert.equal(items[0].proposed.financial_entity_name, 'Pedágio');
+  assert.equal(items[0].reasons[0].label, 'Memória financeira');
+});
+
 test('draft bloqueia hashes duplicados', () => {
   const items = buildFinanceReconciliationDraftItems({
     financial_account_id: 'acc-1',

@@ -1,5 +1,5 @@
 import { db, uuid } from '../db.js';
-import { getFinanceEntityDefaultProfile } from './entities.js';
+import { createFinanceEntity, getFinanceEntityDefaultProfile } from './entities.js';
 import { computeViews } from './ledger.js';
 import { parseFinanceOfx } from './ofxParser.js';
 import { buildFinanceReconciliationDraftItems } from './reconciliationDraft.js';
@@ -5046,7 +5046,8 @@ function reconciliationMemoryUsefulTokens(value: string) {
 }
 
 function hasUsefulReconciliationMemoryPattern(value: string) {
-  return reconciliationMemoryUsefulTokens(value).length >= 2;
+  const usefulTokens = reconciliationMemoryUsefulTokens(value);
+  return usefulTokens.length >= 2 || usefulTokens.some((token) => token.length >= 5);
 }
 
 function buildOfxDuplicateHashes(input: {
@@ -5308,7 +5309,7 @@ function upsertReconciliationMemory(input: {
       last_approved_at,
       created_at,
       updated_at
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0.7, ?, ?, ?)
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0.86, ?, ?, ?)
   `).run(
     uuid('fmem'),
     input.organization_id,
@@ -5344,8 +5345,11 @@ function assertSameTarget(
 function hasExplicitNewTransactionFields(approval: FinanceOfxApproveInput['approved_items'][number]) {
   return Boolean(
     approval.financial_entity_id?.trim()
+    || approval.financial_entity_name?.trim()
     || approval.financial_category_id?.trim()
+    || approval.financial_category_name?.trim()
     || approval.financial_cost_center_id?.trim()
+    || approval.financial_cost_center_name?.trim()
     || approval.financial_payment_method_id?.trim()
   );
 }
@@ -5434,6 +5438,175 @@ function resolveOptionalCatalogId(value: string | null | undefined, fallback: st
   return selected?.trim() || null;
 }
 
+function normalizeInlineCatalogName(value: string | null | undefined) {
+  return (value ?? '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function resolveInlineName(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length >= 2 ? trimmed : null;
+}
+
+function findFinanceEntityByName(organizationId: string, name: string, kind: 'customer' | 'supplier') {
+  const normalizedName = normalizeInlineCatalogName(name);
+  const rows = db.prepare(`
+    select id, organization_id, legal_name, trade_name, document_number, kind, email, phone, is_active, created_at, updated_at
+    from financial_entity
+    where organization_id = ?
+      and kind = ?
+    order by is_active desc, updated_at desc
+  `).all(organizationId, kind) as Array<ReturnType<typeof readFinanceEntityRow>>;
+  return rows.find((row) => (
+    normalizeInlineCatalogName(row.legal_name) === normalizedName
+    || normalizeInlineCatalogName(row.trade_name) === normalizedName
+  ));
+}
+
+function resolveOfxEntityId(input: {
+  organization_id: string;
+  direction: 'inflow' | 'outflow';
+  entity_id: string | null;
+  entity_name: string | null;
+}) {
+  if (input.entity_id) {
+    return input.entity_id;
+  }
+  const entityName = resolveInlineName(input.entity_name);
+  if (!entityName) {
+    return null;
+  }
+  const kind = input.direction === 'inflow' ? 'customer' : 'supplier';
+  const existing = findFinanceEntityByName(input.organization_id, entityName, kind);
+  if (existing) {
+    return existing.id;
+  }
+  return createFinanceEntity({
+    organization_id: input.organization_id,
+    legal_name: entityName,
+    trade_name: entityName,
+    kind
+  }).id;
+}
+
+function findFinanceCategoryByName(input: {
+  organization_id: string;
+  company_id: string | null;
+  name: string;
+  kind: 'income' | 'expense';
+}) {
+  const normalizedName = normalizeInlineCatalogName(input.name);
+  const allRows = db.prepare(`
+    select
+      id,
+      organization_id,
+      company_id,
+      name,
+      kind,
+      parent_category_id,
+      is_active,
+      created_at,
+      updated_at
+    from financial_category
+    where organization_id = ?
+      and kind = ?
+      and (
+        (? is null and company_id is null)
+        or company_id = ?
+        or company_id is null
+      )
+    order by case when company_id = ? then 0 else 1 end, is_active desc, updated_at desc
+  `).all(
+    input.organization_id,
+    input.kind,
+    input.company_id,
+    input.company_id,
+    input.company_id
+  ) as Array<Parameters<typeof mapCategoryRow>[0]>;
+  return allRows.find((row) => normalizeInlineCatalogName(row.name) === normalizedName);
+}
+
+function resolveOfxCategoryId(input: {
+  organization_id: string;
+  company_id: string | null;
+  direction: 'inflow' | 'outflow';
+  category_id: string | null;
+  category_name: string | null;
+}) {
+  if (input.category_id) {
+    return input.category_id;
+  }
+  const categoryName = resolveInlineName(input.category_name);
+  if (!categoryName) {
+    return null;
+  }
+  const kind = input.direction === 'outflow' ? 'expense' : 'income';
+  const existing = findFinanceCategoryByName({
+    organization_id: input.organization_id,
+    company_id: input.company_id,
+    name: categoryName,
+    kind
+  });
+  if (existing) {
+    return existing.id;
+  }
+  return createFinanceCategory({
+    organization_id: input.organization_id,
+    company_id: input.company_id,
+    name: categoryName,
+    kind
+  }).id;
+}
+
+function findFinanceCostCenterByName(organizationId: string, name: string) {
+  const normalizedName = normalizeInlineCatalogName(name);
+  const rows = db.prepare(`
+    select id, name
+    from financial_cost_center
+    where organization_id = ?
+    order by is_active desc, updated_at desc
+  `).all(organizationId) as Array<{ id: string; name: string }>;
+  return rows.find((row) => normalizeInlineCatalogName(row.name) === normalizedName);
+}
+
+function createFinanceCostCenterInline(organizationId: string, name: string) {
+  const nowIso = new Date().toISOString();
+  const id = uuid('fccr');
+  db.prepare(`
+    insert into financial_cost_center (
+      id,
+      organization_id,
+      name,
+      code,
+      is_active,
+      created_at,
+      updated_at
+    ) values (?, ?, ?, null, 1, ?, ?)
+  `).run(id, organizationId, name, nowIso, nowIso);
+  return id;
+}
+
+function resolveOfxCostCenterId(input: {
+  organization_id: string;
+  cost_center_id: string | null;
+  cost_center_name: string | null;
+}) {
+  if (input.cost_center_id) {
+    return input.cost_center_id;
+  }
+  const costCenterName = resolveInlineName(input.cost_center_name);
+  if (!costCenterName) {
+    return null;
+  }
+  return findFinanceCostCenterByName(input.organization_id, costCenterName)?.id
+    ?? createFinanceCostCenterInline(input.organization_id, costCenterName);
+}
+
 function assertFinanceCostCenterExists(organizationId: string, costCenterId: string) {
   const row = db.prepare(`
     select id
@@ -5468,9 +5641,24 @@ function validateOfxApprovalDimensions(input: {
   proposed: FinanceOfxPreviewDto['items'][number]['proposed'];
 }): OfxApprovalDimensions {
   const dimensions = {
-    financial_entity_id: resolveOptionalCatalogId(input.approval.financial_entity_id, input.proposed.financial_entity_id),
-    financial_category_id: resolveOptionalCatalogId(input.approval.financial_category_id, input.proposed.financial_category_id),
-    financial_cost_center_id: resolveOptionalCatalogId(input.approval.financial_cost_center_id, input.proposed.financial_cost_center_id),
+    financial_entity_id: resolveOfxEntityId({
+      organization_id: input.organization_id,
+      direction: input.direction,
+      entity_id: resolveOptionalCatalogId(input.approval.financial_entity_id, input.proposed.financial_entity_id),
+      entity_name: input.approval.financial_entity_name ?? null
+    }),
+    financial_category_id: resolveOfxCategoryId({
+      organization_id: input.organization_id,
+      company_id: input.company_id,
+      direction: input.direction,
+      category_id: resolveOptionalCatalogId(input.approval.financial_category_id, input.proposed.financial_category_id),
+      category_name: input.approval.financial_category_name ?? null
+    }),
+    financial_cost_center_id: resolveOfxCostCenterId({
+      organization_id: input.organization_id,
+      cost_center_id: resolveOptionalCatalogId(input.approval.financial_cost_center_id, input.proposed.financial_cost_center_id),
+      cost_center_name: input.approval.financial_cost_center_name ?? null
+    }),
     financial_payment_method_id: resolveOptionalCatalogId(input.approval.financial_payment_method_id, input.proposed.financial_payment_method_id)
   };
 

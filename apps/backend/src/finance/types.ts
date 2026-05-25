@@ -1268,8 +1268,11 @@ export type FinanceOfxApprovalItemInput = {
   receivable_id?: string | null;
   financial_transaction_id?: string | null;
   financial_entity_id?: string | null;
+  financial_entity_name?: string | null;
   financial_category_id?: string | null;
+  financial_category_name?: string | null;
   financial_cost_center_id?: string | null;
+  financial_cost_center_name?: string | null;
   financial_payment_method_id?: string | null;
   note?: string | null;
 };

@@ -6386,6 +6386,104 @@ test('OFX preview and approval creates settled transaction, match, memory and bl
   }
 });
 
+test('OFX approval creates inline entity, category and cost center and reuses fuzzy memory', async () => {
+  const dbPath = assignTestDbPath('finance-ofx-inline-learning');
+  cleanupDbFiles(dbPath);
+
+  const app = createApp({ forceDbRefresh: true, seedDb: false });
+
+  try {
+    seedFinanceCompanies();
+    createInternalUser({
+      username: 'finance.ofx.inline',
+      display_name: 'Finance OFX Inline',
+      password: 'Senha#123',
+      role: 'supremo',
+      permissions: ['finance.read', 'finance.write', 'finance.reconcile']
+    });
+
+    const loginRes = await request(app).post('/auth/login').send({ username: 'finance.ofx.inline', password: 'Senha#123' });
+    assert.equal(loginRes.status, 200);
+    const token = loginRes.body.token as string;
+
+    const accountRes = await request(app)
+      .post('/finance/accounts')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ company_id: 'company-a', name: 'Banco Pedagio OFX', kind: 'bank' });
+    assert.equal(accountRes.status, 201, JSON.stringify(accountRes.body));
+
+    const pista3Text = `<OFX><BANKTRANLIST><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-5.70<FITID>pista-3<MEMO>Compra no débito - PISTA 3</STMTTRN></BANKTRANLIST></OFX>`;
+    const previewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        company_id: 'company-a',
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'pista-3.ofx',
+        source_file_size_bytes: 256,
+        ofx_text: pista3Text
+      });
+    assert.equal(previewRes.status, 200, JSON.stringify(previewRes.body));
+    assert.equal(previewRes.body.items[0].decision_type, 'needs_review');
+
+    const approveRes = await request(app)
+      .post('/finance/reconciliation/ofx/approve')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        company_id: 'company-a',
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'pista-3.ofx',
+        source_file_size_bytes: 256,
+        source_file_hash: previewRes.body.source_file_hash,
+        ofx_text: pista3Text,
+        approved_items: [{
+          draft_item_id: previewRes.body.items[0].id,
+          decision_type: 'new_transaction',
+          approved: true,
+          save_memory: true,
+          financial_entity_name: 'Pedágio',
+          financial_category_name: 'Pedágio',
+          financial_cost_center_name: 'Operacional',
+          note: 'Pedágio'
+        }]
+      });
+    assert.equal(approveRes.status, 201, JSON.stringify(approveRes.body));
+    assert.equal(approveRes.body.transactions[0].financial_entity_name, 'Pedágio');
+    assert.equal(approveRes.body.transactions[0].financial_category_name, 'Pedágio');
+    assert.equal(approveRes.body.transactions[0].financial_cost_center_name, 'Operacional');
+    assert.equal(approveRes.body.transactions[0].note, 'Pedágio');
+
+    const entityRows = db.prepare('select legal_name, kind from financial_entity where legal_name = ?').all('Pedágio') as Array<{ legal_name: string; kind: string }>;
+    assert.equal(entityRows.length, 1);
+    assert.equal(entityRows[0].kind, 'supplier');
+    const categoryRows = db.prepare('select name, kind from financial_category where name = ?').all('Pedágio') as Array<{ name: string; kind: string }>;
+    assert.equal(categoryRows.length, 1);
+    assert.equal(categoryRows[0].kind, 'expense');
+    assert.equal(db.prepare('select count(*) as count from financial_cost_center where name = ?').get('Operacional').count, 1);
+
+    const pista4Text = `<OFX><BANKTRANLIST><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260525<TRNAMT>-6.10<FITID>pista-4<MEMO>Compra no débito - PISTA 4</STMTTRN></BANKTRANLIST></OFX>`;
+    const fuzzyPreviewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        company_id: 'company-a',
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'pista-4.ofx',
+        source_file_size_bytes: 256,
+        ofx_text: pista4Text
+      });
+    assert.equal(fuzzyPreviewRes.status, 200, JSON.stringify(fuzzyPreviewRes.body));
+    assert.equal(fuzzyPreviewRes.body.items[0].decision_type, 'new_transaction');
+    assert.equal(fuzzyPreviewRes.body.items[0].confidence_band, 'ready');
+    assert.equal(fuzzyPreviewRes.body.items[0].proposed.financial_entity_name, 'Pedágio');
+    assert.equal(fuzzyPreviewRes.body.items[0].proposed.financial_category_name, 'Pedágio');
+    assert.equal(fuzzyPreviewRes.body.items[0].proposed.financial_cost_center_name, 'Operacional');
+  } finally {
+    db.close();
+    cleanupDbFiles(dbPath);
+  }
+});
+
 test('OFX approval rejects unsafe client decisions before writes', async () => {
   const dbPath = assignTestDbPath('finance-ofx-approval-safety');
   cleanupDbFiles(dbPath);

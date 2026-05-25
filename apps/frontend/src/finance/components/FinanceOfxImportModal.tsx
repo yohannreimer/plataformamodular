@@ -29,10 +29,13 @@ type FinanceOfxImportModalProps = {
 
 type DraftItemEdit = {
   financial_entity_id: string;
+  financial_entity_name: string;
   financial_category_id: string;
+  financial_category_name: string;
   financial_cost_center_id: string;
+  financial_cost_center_name: string;
   financial_payment_method_id: string;
-  note: string;
+  reference_name: string;
   save_memory: boolean;
 };
 
@@ -61,10 +64,13 @@ function isSelectedByDefault(item: FinanceReconciliationDraftItem) {
 function initialEditForItem(item: FinanceReconciliationDraftItem): DraftItemEdit {
   return {
     financial_entity_id: item.proposed.financial_entity_id ?? '',
+    financial_entity_name: item.proposed.financial_entity_name ?? '',
     financial_category_id: item.proposed.financial_category_id ?? '',
+    financial_category_name: item.proposed.financial_category_name ?? '',
     financial_cost_center_id: item.proposed.financial_cost_center_id ?? '',
+    financial_cost_center_name: item.proposed.financial_cost_center_name ?? '',
     financial_payment_method_id: item.proposed.financial_payment_method_id ?? '',
-    note: item.proposed.note,
+    reference_name: item.proposed.financial_entity_name ?? item.proposed.note,
     save_memory: item.proposed.save_memory
   };
 }
@@ -80,11 +86,24 @@ function buildApprovedItem(item: FinanceReconciliationDraftItem, approved: boole
     receivable_id: item.target.receivable_id ?? null,
     financial_transaction_id: item.target.financial_transaction_id ?? null,
     financial_entity_id: edit.financial_entity_id || null,
+    financial_entity_name: edit.financial_entity_id ? null : edit.financial_entity_name.trim() || null,
     financial_category_id: edit.financial_category_id || null,
+    financial_category_name: edit.financial_category_id ? null : edit.financial_category_name.trim() || null,
     financial_cost_center_id: edit.financial_cost_center_id || null,
+    financial_cost_center_name: edit.financial_cost_center_id ? null : edit.financial_cost_center_name.trim() || null,
     financial_payment_method_id: edit.financial_payment_method_id || null,
-    note: edit.note
+    note: edit.reference_name.trim() || item.proposed.note || item.line.description
   };
+}
+
+function itemDirection(item: FinanceReconciliationDraftItem) {
+  return item.line.amount_cents >= 0 ? 'Entrada' : 'Saída';
+}
+
+function exactNameMatch<T extends { id: string }>(items: T[], name: string, readName: (item: T) => string) {
+  const normalizedName = name.trim().toLocaleLowerCase('pt-BR');
+  if (!normalizedName) return null;
+  return items.find((item) => readName(item).trim().toLocaleLowerCase('pt-BR') === normalizedName) ?? null;
 }
 
 const overlayStyle = {
@@ -230,10 +249,13 @@ export function FinanceOfxImportModal({
       [itemId]: {
         ...(current[itemId] ?? {
           financial_entity_id: '',
+          financial_entity_name: '',
           financial_category_id: '',
+          financial_category_name: '',
           financial_cost_center_id: '',
+          financial_cost_center_name: '',
           financial_payment_method_id: '',
-          note: '',
+          reference_name: '',
           save_memory: false
         }),
         ...changes
@@ -323,6 +345,11 @@ export function FinanceOfxImportModal({
                       {preview.items.map((item) => {
                         const selectable = isSelectable(item);
                         const edit = itemEdits[item.id] ?? initialEditForItem(item);
+                        const direction = itemDirection(item);
+                        const rowCategories = categories.filter((category) => category.kind === (item.line.amount_cents >= 0 ? 'income' : 'expense'));
+                        const entityListId = `ofx-entities-${item.id}`;
+                        const categoryListId = `ofx-categories-${item.id}`;
+                        const costCenterListId = `ofx-cost-centers-${item.id}`;
                         return (
                           <tr key={item.id} style={{ borderTop: '1px solid #edf2f7', color: selectable ? '#0f172a' : '#64748b' }}>
                             <td style={tdStyle}>
@@ -343,34 +370,88 @@ export function FinanceOfxImportModal({
                             </td>
                             <td style={{ ...tdStyle, minWidth: 220 }}>
                               <strong style={{ display: 'block', fontSize: 13 }}>{item.line.description}</strong>
-                              <small style={{ color: '#64748b' }}>{item.blocking_reason ?? item.reasons[0]?.label ?? 'Sem observação'}</small>
+                              <small style={{ color: item.line.amount_cents >= 0 ? '#047857' : '#b45309', display: 'block', fontWeight: 800, marginTop: 3 }}>
+                                {direction} · {item.blocking_reason ?? item.reasons[0]?.label ?? 'Sem observação'}
+                              </small>
                               {selectable ? (
                                 <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(2, minmax(150px, 1fr))', marginTop: 10 }}>
-                                  <select aria-label={`Entidade ${item.line.description}`} value={edit.financial_entity_id} onChange={(event) => updateItemEdit(item.id, { financial_entity_id: event.target.value })} style={inlineControlStyle}>
-                                    <option value="">Sem entidade</option>
+                                  <datalist id={entityListId}>
                                     {entities.map((entity) => (
-                                      <option key={entity.id} value={entity.id}>{entity.trade_name ?? entity.legal_name}</option>
+                                      <option key={entity.id} value={entity.trade_name ?? entity.legal_name} />
                                     ))}
-                                  </select>
-                                  <select aria-label={`Categoria ${item.line.description}`} value={edit.financial_category_id} onChange={(event) => updateItemEdit(item.id, { financial_category_id: event.target.value })} style={inlineControlStyle}>
-                                    <option value="">Sem categoria</option>
-                                    {categories.map((category) => (
-                                      <option key={category.id} value={category.id}>{category.name}</option>
+                                  </datalist>
+                                  <datalist id={categoryListId}>
+                                    {rowCategories.map((category) => (
+                                      <option key={category.id} value={category.name} />
                                     ))}
-                                  </select>
-                                  <select aria-label={`Centro de custo ${item.line.description}`} value={edit.financial_cost_center_id} onChange={(event) => updateItemEdit(item.id, { financial_cost_center_id: event.target.value })} style={inlineControlStyle}>
-                                    <option value="">Sem centro</option>
+                                  </datalist>
+                                  <datalist id={costCenterListId}>
                                     {costCenters.map((costCenter) => (
-                                      <option key={costCenter.id} value={costCenter.id}>{costCenter.name}</option>
+                                      <option key={costCenter.id} value={costCenter.name} />
                                     ))}
-                                  </select>
+                                  </datalist>
+                                  <input
+                                    aria-label={`Entidade ${item.line.description}`}
+                                    list={entityListId}
+                                    placeholder={item.line.amount_cents >= 0 ? 'Cliente ou nova entidade' : 'Fornecedor ou nova entidade'}
+                                    value={edit.financial_entity_name}
+                                    onChange={(event) => {
+                                      const name = event.target.value;
+                                      const match = exactNameMatch(entities, name, (entity) => entity.trade_name ?? entity.legal_name);
+                                      updateItemEdit(item.id, {
+                                        financial_entity_id: match?.id ?? '',
+                                        financial_entity_name: name,
+                                        reference_name: edit.reference_name || name
+                                      });
+                                      setSelectedIds((current) => new Set(current).add(item.id));
+                                    }}
+                                    style={inlineControlStyle}
+                                  />
+                                  <input
+                                    aria-label={`Categoria ${item.line.description}`}
+                                    list={categoryListId}
+                                    placeholder="Categoria ou nova categoria"
+                                    value={edit.financial_category_name}
+                                    onChange={(event) => {
+                                      const name = event.target.value;
+                                      const match = exactNameMatch(rowCategories, name, (category) => category.name);
+                                      updateItemEdit(item.id, {
+                                        financial_category_id: match?.id ?? '',
+                                        financial_category_name: name
+                                      });
+                                      setSelectedIds((current) => new Set(current).add(item.id));
+                                    }}
+                                    style={inlineControlStyle}
+                                  />
+                                  <input
+                                    aria-label={`Centro de custo ${item.line.description}`}
+                                    list={costCenterListId}
+                                    placeholder="Centro ou novo centro"
+                                    value={edit.financial_cost_center_name}
+                                    onChange={(event) => {
+                                      const name = event.target.value;
+                                      const match = exactNameMatch(costCenters, name, (costCenter) => costCenter.name);
+                                      updateItemEdit(item.id, {
+                                        financial_cost_center_id: match?.id ?? '',
+                                        financial_cost_center_name: name
+                                      });
+                                      setSelectedIds((current) => new Set(current).add(item.id));
+                                    }}
+                                    style={inlineControlStyle}
+                                  />
                                   <select aria-label={`Forma de pagamento ${item.line.description}`} value={edit.financial_payment_method_id} onChange={(event) => updateItemEdit(item.id, { financial_payment_method_id: event.target.value })} style={inlineControlStyle}>
                                     <option value="">Sem forma</option>
                                     {paymentMethods.map((paymentMethod) => (
                                       <option key={paymentMethod.id} value={paymentMethod.id}>{paymentMethod.name}</option>
                                     ))}
                                   </select>
-                                  <input aria-label={`Nota ${item.line.description}`} value={edit.note} onChange={(event) => updateItemEdit(item.id, { note: event.target.value })} style={{ ...inlineControlStyle, gridColumn: '1 / -1' }} />
+                                  <input
+                                    aria-label={`Referência ${item.line.description}`}
+                                    value={edit.reference_name}
+                                    onChange={(event) => updateItemEdit(item.id, { reference_name: event.target.value })}
+                                    placeholder="Nome limpo do lançamento"
+                                    style={{ ...inlineControlStyle, gridColumn: '1 / -1' }}
+                                  />
                                   <label style={{ alignItems: 'center', color: '#475569', display: 'flex', fontSize: 11, fontWeight: 700, gap: 6 }}>
                                     <input aria-label={`Salvar memória ${item.line.description}`} type="checkbox" checked={edit.save_memory} onChange={(event) => updateItemEdit(item.id, { save_memory: event.target.checked })} />
                                     Salvar memória
@@ -379,7 +460,7 @@ export function FinanceOfxImportModal({
                               ) : null}
                             </td>
                             <td style={tdStyle}>{decisionLabel(item)}</td>
-                            <td style={tdStyle}>{item.proposed.financial_category_name ?? 'Sem categoria'}</td>
+                            <td style={tdStyle}>{edit.financial_category_name || item.proposed.financial_category_name || 'Sem categoria'}</td>
                             <td style={{ ...tdStyle, textAlign: 'right' }}><FinanceMono>{formatCurrency(item.line.amount_cents)}</FinanceMono></td>
                             <td style={{ ...tdStyle, color: selectable ? '#047857' : '#92400e', fontWeight: 800, textAlign: 'right' }}>{Math.round(item.confidence_score * 100)}%</td>
                           </tr>
