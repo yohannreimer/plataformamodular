@@ -307,6 +307,15 @@ export type FinanceReconciliationSuggestionReason = {
   tone: 'neutral' | 'positive' | 'warning';
 };
 
+export type FinanceReconciliationDraftDecisionType =
+  | 'payable_match'
+  | 'receivable_match'
+  | 'ledger_match'
+  | 'new_transaction'
+  | 'needs_review'
+  | 'duplicate'
+  | 'invalid';
+
 export type FinanceReconciliationSuggestion = {
   financial_transaction_id: string;
   description: string;
@@ -382,6 +391,102 @@ export type FinanceReconciliationInbox = {
   inbox: FinanceReconciliationInboxEntry[];
   recent_matches: FinanceReconciliationMatch[];
   imported_jobs: FinanceImportJob[];
+};
+
+export type FinanceOfxLine = {
+  id: string;
+  statement_date: string;
+  posted_at: string | null;
+  amount_cents: number;
+  description: string;
+  normalized_description: string;
+  reference_code: string | null;
+  balance_cents: number | null;
+  dedupe_hash: string;
+};
+
+export type FinanceReconciliationDraftItem = {
+  id: string;
+  line: FinanceOfxLine;
+  decision_type: FinanceReconciliationDraftDecisionType;
+  confidence_score: number;
+  confidence_band: 'auto' | 'ready' | 'review' | 'blocked';
+  reasons: FinanceReconciliationSuggestionReason[];
+  target: {
+    payable_id?: string | null;
+    receivable_id?: string | null;
+    financial_transaction_id?: string | null;
+  };
+  proposed: {
+    financial_entity_id: string | null;
+    financial_entity_name: string | null;
+    financial_category_id: string | null;
+    financial_category_name: string | null;
+    financial_cost_center_id: string | null;
+    financial_cost_center_name: string | null;
+    financial_payment_method_id: string | null;
+    financial_payment_method_name: string | null;
+    financial_account_id: string;
+    note: string;
+    save_memory: boolean;
+  };
+  blocking_reason: string | null;
+};
+
+export type FinanceOfxPreviewPayload = {
+  company_id?: string | null;
+  financial_account_id: string;
+  source_file_name: string;
+  source_file_size_bytes: number;
+  ofx_text: string;
+};
+
+export type FinanceOfxPreview = {
+  organization_id: string;
+  company_id: string | null;
+  financial_account_id: string;
+  source_file_name: string;
+  source_file_hash: string;
+  generated_at: string;
+  summary: {
+    total_rows: number;
+    ready_count: number;
+    review_count: number;
+    blocked_count: number;
+    duplicate_count: number;
+    inflow_cents: number;
+    outflow_cents: number;
+  };
+  items: FinanceReconciliationDraftItem[];
+};
+
+export type FinanceOfxApprovalItemPayload = {
+  draft_item_id: string;
+  decision_type: FinanceReconciliationDraftDecisionType;
+  approved: boolean;
+  save_memory?: boolean;
+  payable_id?: string | null;
+  receivable_id?: string | null;
+  financial_transaction_id?: string | null;
+  financial_entity_id?: string | null;
+  financial_category_id?: string | null;
+  financial_cost_center_id?: string | null;
+  financial_payment_method_id?: string | null;
+  note?: string | null;
+};
+
+export type FinanceOfxApprovePayload = FinanceOfxPreviewPayload & {
+  source_file_hash: string;
+  approved_items: FinanceOfxApprovalItemPayload[];
+};
+
+export type FinanceOfxApproveResult = {
+  batch_id: string;
+  import_job: FinanceImportJob;
+  approved_count: number;
+  skipped_count: number;
+  matches: FinanceReconciliationMatch[];
+  transactions: FinanceTransaction[];
 };
 
 export type FinanceQualitySeverity = 'critical' | 'warning' | 'suggestion';
@@ -1790,6 +1895,16 @@ export const financeApi = {
     }),
   createTransactionFromStatement: (statementEntryId: string, payload: CreateFinanceTransactionFromStatementPayload = {}) =>
     req<{ transaction: FinanceTransaction; match: FinanceReconciliationMatch }>(`/finance/reconciliation/statement-entries/${encodeURIComponent(statementEntryId)}/transaction`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  previewOfxReconciliation: (payload: FinanceOfxPreviewPayload) =>
+    req<FinanceOfxPreview>('/finance/reconciliation/ofx/preview', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  approveOfxReconciliation: (payload: FinanceOfxApprovePayload) =>
+    req<FinanceOfxApproveResult>('/finance/reconciliation/ofx/approve', {
       method: 'POST',
       body: JSON.stringify(payload)
     }),
