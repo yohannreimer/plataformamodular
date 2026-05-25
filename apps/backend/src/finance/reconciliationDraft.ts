@@ -107,6 +107,16 @@ function buildDraftItem(
   line: FinanceOfxLineDto,
   state: DraftBuildState
 ): FinanceReconciliationDraftItemDto {
+  if (line.invalid_reason) {
+    return draftItem({
+      financialAccountId: input.financial_account_id,
+      line,
+      decisionType: 'invalid',
+      score: 0,
+      blockingReason: line.invalid_reason
+    });
+  }
+
   if (input.duplicateHashes.has(line.dedupe_hash)) {
     return draftItem({
       financialAccountId: input.financial_account_id,

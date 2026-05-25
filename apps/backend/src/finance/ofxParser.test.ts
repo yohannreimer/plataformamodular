@@ -46,6 +46,7 @@ test('parseFinanceOfx normaliza linhas OFX de débito e crédito', () => {
     normalized_description: 'pagto atlas cloud ltda',
     reference_code: 'abc-123',
     balance_cents: null,
+    invalid_reason: null,
     dedupe_hash: buildStatementDedupeHash({
       financial_account_id: 'acc-1',
       statement_date: '2026-05-24',
@@ -151,6 +152,63 @@ test('parseFinanceOfx inclui contexto da linha OFX em erros de bloco', () => {
     }),
     /Linha OFX 2: Linha OFX sem valor válido/
   );
+});
+
+test('parseFinanceOfx preserva linhas inválidas como exceções quando solicitado', () => {
+  const parsed = parseFinanceOfx({
+    organization_id: 'org-holand',
+    financial_account_id: 'acc-1',
+    source_file_name: 'linhas-invalidas.ofx',
+    preserve_invalid_lines: true,
+    ofx_text: `
+<OFX>
+<BANKTRANLIST>
+<STMTTRN>
+<DTPOSTED>20260524
+<TRNAMT>10.00
+<FITID>ok
+<MEMO>Movimento válido
+</STMTTRN>
+<STMTTRN>
+<DTPOSTED>20260524
+<TRNAMT>123abc
+<FITID>bad-amount
+<MEMO>Movimento inválido
+</STMTTRN>
+</BANKTRANLIST>
+</OFX>
+`
+  });
+
+  assert.equal(parsed.lines.length, 2);
+  assert.equal(parsed.lines[0].invalid_reason, null);
+  assert.equal(parsed.lines[1].id, 'ofx-line-2');
+  assert.equal(parsed.lines[1].description, 'Movimento inválido');
+  assert.equal(parsed.lines[1].amount_cents, 0);
+  assert.match(parsed.lines[1].invalid_reason ?? '', /Linha OFX sem valor válido/);
+});
+
+test('parseFinanceOfx lê saldo quando a linha OFX trouxer BALAMT', () => {
+  const parsed = parseFinanceOfx({
+    organization_id: 'org-holand',
+    financial_account_id: 'acc-1',
+    source_file_name: 'saldo.ofx',
+    ofx_text: `
+<OFX>
+<BANKTRANLIST>
+<STMTTRN>
+<DTPOSTED>20260524
+<TRNAMT>10.00
+<BALAMT>1234.56
+<FITID>balance
+<MEMO>Movimento com saldo
+</STMTTRN>
+</BANKTRANLIST>
+</OFX>
+`
+  });
+
+  assert.equal(parsed.lines[0].balance_cents, 123456);
 });
 
 test('parseFinanceOfx preserva entidades numéricas XML inválidas em descrições OFX', () => {

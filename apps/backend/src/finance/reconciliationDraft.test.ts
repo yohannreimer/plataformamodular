@@ -12,6 +12,7 @@ const lineOut: FinanceOfxLineDto = {
   normalized_description: 'pagto atlas cloud',
   reference_code: 'fit-1',
   balance_cents: null,
+  invalid_reason: null,
   dedupe_hash: 'hash-1'
 };
 
@@ -179,6 +180,27 @@ test('draft bloqueia hashes duplicados', () => {
   assert.equal(items[0].decision_type, 'duplicate');
   assert.equal(items[0].confidence_band, 'blocked');
   assert.equal(items[0].blocking_reason, 'Linha OFX já importada para esta conta.');
+});
+
+test('draft separa linha OFX inválida como exceção bloqueada', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [ofxLineFixture({
+      amount_cents: 0,
+      description: 'Linha inválida',
+      normalized_description: 'linha invalida',
+      invalid_reason: 'Linha OFX sem valor válido.'
+    })],
+    payables: [],
+    receivables: [],
+    transactions: [],
+    memories: [],
+    duplicateHashes: new Set()
+  });
+
+  assert.equal(items[0].decision_type, 'invalid');
+  assert.equal(items[0].confidence_band, 'blocked');
+  assert.equal(items[0].blocking_reason, 'Linha OFX sem valor válido.');
 });
 
 test('draft não promove match por valor exato sem evidência útil', () => {

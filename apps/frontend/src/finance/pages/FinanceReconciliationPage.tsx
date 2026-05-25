@@ -3,6 +3,8 @@ import type { CSSProperties, ReactNode } from 'react';
 import {
   financeApi,
   type FinanceAccount,
+  type FinanceCatalogSnapshot,
+  type FinanceEntity,
   type FinanceImportJob,
   type FinanceQualityInbox,
   type FinanceQualityIssue,
@@ -423,12 +425,20 @@ export function FinanceReconciliationPage() {
   const [saveAsDefault, setSaveAsDefault] = useState(true);
   const [ofxModalOpen, setOfxModalOpen] = useState(false);
   const [accounts, setAccounts] = useState<FinanceAccount[]>([]);
+  const [entities, setEntities] = useState<FinanceEntity[]>([]);
+  const [catalog, setCatalog] = useState<FinanceCatalogSnapshot | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    Promise.allSettled([financeApi.getReconciliationInbox(), financeApi.getQualityInbox(), financeApi.listAccounts()])
-      .then(([reconciliationResult, qualityResult, accountsResult]) => {
+    Promise.allSettled([
+      financeApi.getReconciliationInbox(),
+      financeApi.getQualityInbox(),
+      financeApi.listAccounts(),
+      financeApi.listEntities(),
+      financeApi.getCatalogSnapshot()
+    ])
+      .then(([reconciliationResult, qualityResult, accountsResult, entitiesResult, catalogResult]) => {
         if (cancelled) return;
 
         if (reconciliationResult.status === 'fulfilled') {
@@ -448,6 +458,16 @@ export function FinanceReconciliationPage() {
           setAccounts(accountsResult.value.accounts);
         } else {
           setAccounts([]);
+        }
+        if (entitiesResult.status === 'fulfilled') {
+          setEntities(entitiesResult.value);
+        } else {
+          setEntities([]);
+        }
+        if (catalogResult.status === 'fulfilled') {
+          setCatalog(catalogResult.value);
+        } else {
+          setCatalog(null);
         }
 
         setLoadError('');
@@ -639,8 +659,14 @@ export function FinanceReconciliationPage() {
     setInlineError('');
     setLoading(true);
 
-    Promise.allSettled([financeApi.getReconciliationInbox(), financeApi.getQualityInbox(), financeApi.listAccounts()])
-      .then(([reconciliationResult, qualityResult, accountsResult]) => {
+    Promise.allSettled([
+      financeApi.getReconciliationInbox(),
+      financeApi.getQualityInbox(),
+      financeApi.listAccounts(),
+      financeApi.listEntities(),
+      financeApi.getCatalogSnapshot()
+    ])
+      .then(([reconciliationResult, qualityResult, accountsResult, entitiesResult, catalogResult]) => {
         if (reconciliationResult.status === 'fulfilled') {
           setInbox(reconciliationResult.value);
         }
@@ -649,6 +675,12 @@ export function FinanceReconciliationPage() {
         }
         if (accountsResult.status === 'fulfilled') {
           setAccounts(accountsResult.value.accounts);
+        }
+        if (entitiesResult.status === 'fulfilled') {
+          setEntities(entitiesResult.value);
+        }
+        if (catalogResult.status === 'fulfilled') {
+          setCatalog(catalogResult.value);
         }
       })
       .finally(() => setLoading(false));
@@ -929,6 +961,10 @@ export function FinanceReconciliationPage() {
       <FinanceOfxImportModal
         open={ofxModalOpen}
         accounts={accounts}
+        entities={entities}
+        categories={catalog?.categories ?? []}
+        costCenters={catalog?.cost_centers ?? []}
+        paymentMethods={catalog?.payment_methods ?? []}
         onPreview={financeApi.previewOfxReconciliation}
         onApprove={financeApi.approveOfxReconciliation}
         onClose={() => setOfxModalOpen(false)}

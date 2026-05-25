@@ -5167,7 +5167,8 @@ export function previewFinanceOfxReconciliation(input: FinanceOfxPreviewRequest)
     organization_id: normalizedOrganizationId,
     financial_account_id: input.financial_account_id,
     source_file_name: input.source_file_name,
-    ofx_text: input.ofx_text
+    ofx_text: input.ofx_text,
+    preserve_invalid_lines: true
   });
   assertOfxLineLimit(parsed.lines.length);
   const companyCompatibleTransactionIds = listCompanyCompatibleTransactionIds(normalizedOrganizationId, companyId);

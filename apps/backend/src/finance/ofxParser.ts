@@ -6,6 +6,7 @@ export type ParseFinanceOfxInput = {
   financial_account_id: string;
   source_file_name: string;
   ofx_text: string;
+  preserve_invalid_lines?: boolean;
 };
 
 export type ParseFinanceOfxResult = {
@@ -121,6 +122,11 @@ function shouldRoundHalfAwayFromZeroToCents(decimalPart: string) {
   return decimalPart.length > 2 && Number.parseInt(decimalPart[2], 10) >= 5;
 }
 
+function parseOptionalOfxAmountToCents(value: string | null) {
+  if (!value) return null;
+  return parseOfxAmountToCents(value);
+}
+
 export function buildStatementDedupeHash(input: {
   financial_account_id: string;
   statement_date: string;
@@ -157,6 +163,7 @@ export function parseFinanceOfx(input: ParseFinanceOfxInput): ParseFinanceOfxRes
       }
       const normalizedDescription = normalizeReconciliationDescription(description);
       const referenceCode = readTag(block, 'FITID');
+      const balanceCents = parseOptionalOfxAmountToCents(readTag(block, 'BALAMT'));
 
       return {
         id: `ofx-line-${index + 1}`,
@@ -166,7 +173,8 @@ export function parseFinanceOfx(input: ParseFinanceOfxInput): ParseFinanceOfxRes
         description,
         normalized_description: normalizedDescription,
         reference_code: referenceCode,
-        balance_cents: null,
+        balance_cents: balanceCents,
+        invalid_reason: null,
         dedupe_hash: buildStatementDedupeHash({
           financial_account_id: input.financial_account_id,
           statement_date: statementDate,
@@ -177,6 +185,34 @@ export function parseFinanceOfx(input: ParseFinanceOfxInput): ParseFinanceOfxRes
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (input.preserve_invalid_lines) {
+        const fallbackDescription = (readTag(block, 'MEMO') ?? readTag(block, 'NAME') ?? `Linha OFX ${index + 1} inválida`).trim();
+        const normalizedDescription = normalizeReconciliationDescription(fallbackDescription);
+        const referenceCode = readTag(block, 'FITID');
+        const fallbackDate = /^\d{8}/.test(readTag(block, 'DTPOSTED') ?? '')
+          ? `${readTag(block, 'DTPOSTED')!.slice(0, 4)}-${readTag(block, 'DTPOSTED')!.slice(4, 6)}-${readTag(block, 'DTPOSTED')!.slice(6, 8)}`
+          : '1970-01-01';
+        return {
+          id: `ofx-line-${index + 1}`,
+          statement_date: fallbackDate,
+          posted_at: null,
+          amount_cents: 0,
+          description: fallbackDescription,
+          normalized_description: normalizedDescription,
+          reference_code: referenceCode,
+          balance_cents: null,
+          invalid_reason: message,
+          dedupe_hash: createHash('sha256')
+            .update([
+              input.financial_account_id,
+              `invalid-${index + 1}`,
+              referenceCode ?? '',
+              normalizedDescription,
+              message
+            ].join('|'))
+            .digest('hex')
+        };
+      }
       throw new Error(`Linha OFX ${index + 1}: ${message}`);
     }
   });

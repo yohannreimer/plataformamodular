@@ -1191,6 +1191,7 @@ export type FinanceOfxLineDto = {
   reference_code: string | null;
   balance_cents: number | null;
   dedupe_hash: string;
+  invalid_reason: string | null;
 };
 
 export type FinanceReconciliationDraftDecisionType =

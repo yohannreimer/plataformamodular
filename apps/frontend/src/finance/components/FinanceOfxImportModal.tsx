@@ -1,11 +1,15 @@
 import { useMemo, useState } from 'react';
 import type {
   FinanceAccount,
+  FinanceCategory,
+  FinanceCostCenter,
+  FinanceEntity,
   FinanceOfxApprovalItemPayload,
   FinanceOfxApprovePayload,
   FinanceOfxApproveResult,
   FinanceOfxPreview,
   FinanceOfxPreviewPayload,
+  FinancePaymentMethod,
   FinanceReconciliationDraftItem
 } from '../api';
 import { FinanceEmptyState, FinanceMono } from './FinancePrimitives';
@@ -17,6 +21,19 @@ type FinanceOfxImportModalProps = {
   onApprove: (payload: FinanceOfxApprovePayload) => Promise<FinanceOfxApproveResult>;
   onClose: () => void;
   onApproved: (result: FinanceOfxApproveResult) => void;
+  entities?: FinanceEntity[];
+  categories?: FinanceCategory[];
+  costCenters?: FinanceCostCenter[];
+  paymentMethods?: FinancePaymentMethod[];
+};
+
+type DraftItemEdit = {
+  financial_entity_id: string;
+  financial_category_id: string;
+  financial_cost_center_id: string;
+  financial_payment_method_id: string;
+  note: string;
+  save_memory: boolean;
 };
 
 function formatCurrency(cents: number) {
@@ -41,20 +58,32 @@ function isSelectedByDefault(item: FinanceReconciliationDraftItem) {
   return isSelectable(item) && (item.confidence_band === 'auto' || item.confidence_band === 'ready');
 }
 
-function buildApprovedItem(item: FinanceReconciliationDraftItem, approved: boolean): FinanceOfxApprovalItemPayload {
+function initialEditForItem(item: FinanceReconciliationDraftItem): DraftItemEdit {
+  return {
+    financial_entity_id: item.proposed.financial_entity_id ?? '',
+    financial_category_id: item.proposed.financial_category_id ?? '',
+    financial_cost_center_id: item.proposed.financial_cost_center_id ?? '',
+    financial_payment_method_id: item.proposed.financial_payment_method_id ?? '',
+    note: item.proposed.note,
+    save_memory: item.proposed.save_memory
+  };
+}
+
+function buildApprovedItem(item: FinanceReconciliationDraftItem, approved: boolean, edit: DraftItemEdit): FinanceOfxApprovalItemPayload {
+  const decisionType = item.decision_type === 'needs_review' && approved ? 'new_transaction' : item.decision_type;
   return {
     draft_item_id: item.id,
     approved,
-    decision_type: item.decision_type,
-    save_memory: item.proposed.save_memory,
+    decision_type: decisionType,
+    save_memory: edit.save_memory,
     payable_id: item.target.payable_id ?? null,
     receivable_id: item.target.receivable_id ?? null,
     financial_transaction_id: item.target.financial_transaction_id ?? null,
-    financial_entity_id: item.proposed.financial_entity_id,
-    financial_category_id: item.proposed.financial_category_id,
-    financial_cost_center_id: item.proposed.financial_cost_center_id,
-    financial_payment_method_id: item.proposed.financial_payment_method_id,
-    note: item.proposed.note
+    financial_entity_id: edit.financial_entity_id || null,
+    financial_category_id: edit.financial_category_id || null,
+    financial_cost_center_id: edit.financial_cost_center_id || null,
+    financial_payment_method_id: edit.financial_payment_method_id || null,
+    note: edit.note
   };
 }
 
@@ -113,7 +142,11 @@ export function FinanceOfxImportModal({
   onPreview,
   onApprove,
   onClose,
-  onApproved
+  onApproved,
+  entities = [],
+  categories = [],
+  costCenters = [],
+  paymentMethods = []
 }: FinanceOfxImportModalProps) {
   const [financialAccountId, setFinancialAccountId] = useState('');
   const [fileName, setFileName] = useState('');
@@ -121,6 +154,7 @@ export function FinanceOfxImportModal({
   const [ofxText, setOfxText] = useState('');
   const [preview, setPreview] = useState<FinanceOfxPreview | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [itemEdits, setItemEdits] = useState<Record<string, DraftItemEdit>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -134,6 +168,7 @@ export function FinanceOfxImportModal({
     setError('');
     setPreview(null);
     setSelectedIds(new Set());
+    setItemEdits({});
     setFileName(file.name);
     setFileSize(file.size);
     setOfxText(await file.text());
@@ -152,6 +187,7 @@ export function FinanceOfxImportModal({
       });
       setPreview(nextPreview);
       setSelectedIds(new Set(nextPreview.items.filter(isSelectedByDefault).map((item) => item.id)));
+      setItemEdits(Object.fromEntries(nextPreview.items.map((item) => [item.id, initialEditForItem(item)])));
     } catch (previewError) {
       setError(previewError instanceof Error ? previewError.message : 'Falha ao gerar prévia OFX.');
     } finally {
@@ -172,7 +208,11 @@ export function FinanceOfxImportModal({
         source_file_size_bytes: fileSize,
         source_file_hash: preview.source_file_hash,
         ofx_text: ofxText,
-        approved_items: approvableItems.map((item) => buildApprovedItem(item, selectedIds.has(item.id)))
+        approved_items: approvableItems.map((item) => buildApprovedItem(
+          item,
+          selectedIds.has(item.id),
+          itemEdits[item.id] ?? initialEditForItem(item)
+        ))
       });
       onApproved(result);
     } catch (approveError) {
@@ -184,6 +224,22 @@ export function FinanceOfxImportModal({
 
   const canPreview = Boolean(financialAccountId && ofxText && !loading);
   const canApprove = Boolean(preview && selectedIds.size > 0 && !loading);
+  const updateItemEdit = (itemId: string, changes: Partial<DraftItemEdit>) => {
+    setItemEdits((current) => ({
+      ...current,
+      [itemId]: {
+        ...(current[itemId] ?? {
+          financial_entity_id: '',
+          financial_category_id: '',
+          financial_cost_center_id: '',
+          financial_payment_method_id: '',
+          note: '',
+          save_memory: false
+        }),
+        ...changes
+      }
+    }));
+  };
 
   return (
     <aside role="dialog" aria-label="Importar OFX" aria-modal="true" style={overlayStyle}>
@@ -266,10 +322,12 @@ export function FinanceOfxImportModal({
                     <tbody>
                       {preview.items.map((item) => {
                         const selectable = isSelectable(item);
+                        const edit = itemEdits[item.id] ?? initialEditForItem(item);
                         return (
                           <tr key={item.id} style={{ borderTop: '1px solid #edf2f7', color: selectable ? '#0f172a' : '#64748b' }}>
                             <td style={tdStyle}>
                               <input
+                                aria-label={`Aprovar ${item.line.description}`}
                                 type="checkbox"
                                 checked={selectedIds.has(item.id)}
                                 disabled={!selectable}
@@ -286,6 +344,39 @@ export function FinanceOfxImportModal({
                             <td style={{ ...tdStyle, minWidth: 220 }}>
                               <strong style={{ display: 'block', fontSize: 13 }}>{item.line.description}</strong>
                               <small style={{ color: '#64748b' }}>{item.blocking_reason ?? item.reasons[0]?.label ?? 'Sem observação'}</small>
+                              {selectable ? (
+                                <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(2, minmax(150px, 1fr))', marginTop: 10 }}>
+                                  <select aria-label={`Entidade ${item.line.description}`} value={edit.financial_entity_id} onChange={(event) => updateItemEdit(item.id, { financial_entity_id: event.target.value })} style={inlineControlStyle}>
+                                    <option value="">Sem entidade</option>
+                                    {entities.map((entity) => (
+                                      <option key={entity.id} value={entity.id}>{entity.trade_name ?? entity.legal_name}</option>
+                                    ))}
+                                  </select>
+                                  <select aria-label={`Categoria ${item.line.description}`} value={edit.financial_category_id} onChange={(event) => updateItemEdit(item.id, { financial_category_id: event.target.value })} style={inlineControlStyle}>
+                                    <option value="">Sem categoria</option>
+                                    {categories.map((category) => (
+                                      <option key={category.id} value={category.id}>{category.name}</option>
+                                    ))}
+                                  </select>
+                                  <select aria-label={`Centro de custo ${item.line.description}`} value={edit.financial_cost_center_id} onChange={(event) => updateItemEdit(item.id, { financial_cost_center_id: event.target.value })} style={inlineControlStyle}>
+                                    <option value="">Sem centro</option>
+                                    {costCenters.map((costCenter) => (
+                                      <option key={costCenter.id} value={costCenter.id}>{costCenter.name}</option>
+                                    ))}
+                                  </select>
+                                  <select aria-label={`Forma de pagamento ${item.line.description}`} value={edit.financial_payment_method_id} onChange={(event) => updateItemEdit(item.id, { financial_payment_method_id: event.target.value })} style={inlineControlStyle}>
+                                    <option value="">Sem forma</option>
+                                    {paymentMethods.map((paymentMethod) => (
+                                      <option key={paymentMethod.id} value={paymentMethod.id}>{paymentMethod.name}</option>
+                                    ))}
+                                  </select>
+                                  <input aria-label={`Nota ${item.line.description}`} value={edit.note} onChange={(event) => updateItemEdit(item.id, { note: event.target.value })} style={{ ...inlineControlStyle, gridColumn: '1 / -1' }} />
+                                  <label style={{ alignItems: 'center', color: '#475569', display: 'flex', fontSize: 11, fontWeight: 700, gap: 6 }}>
+                                    <input aria-label={`Salvar memória ${item.line.description}`} type="checkbox" checked={edit.save_memory} onChange={(event) => updateItemEdit(item.id, { save_memory: event.target.checked })} />
+                                    Salvar memória
+                                  </label>
+                                </div>
+                              ) : null}
                             </td>
                             <td style={tdStyle}>{decisionLabel(item)}</td>
                             <td style={tdStyle}>{item.proposed.financial_category_name ?? 'Sem categoria'}</td>
@@ -334,4 +425,15 @@ const thStyle = {
 const tdStyle = {
   padding: '10px',
   verticalAlign: 'middle'
+} as const;
+
+const inlineControlStyle = {
+  background: '#ffffff',
+  border: '1px solid #cbd5e1',
+  borderRadius: 6,
+  color: '#0f172a',
+  fontSize: 11,
+  minHeight: 30,
+  padding: '0 8px',
+  width: '100%'
 } as const;

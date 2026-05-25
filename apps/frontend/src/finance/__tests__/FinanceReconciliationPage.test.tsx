@@ -248,6 +248,53 @@ vi.mock('../api', () => ({
         updated_at: '2026-04-22T09:00:00.000Z'
       }]
     }),
+    listEntities: vi.fn().mockResolvedValue([
+      {
+        id: 'entity-1',
+        organization_id: 'org-prymeira',
+        legal_name: 'Fornecedor Atlas',
+        trade_name: 'Atlas',
+        document_number: null,
+        kind: 'supplier',
+        email: null,
+        phone: null,
+        is_active: true,
+        created_at: '2026-04-22T09:00:00.000Z',
+        updated_at: '2026-04-22T09:00:00.000Z'
+      }
+    ]),
+    getCatalogSnapshot: vi.fn().mockResolvedValue({
+      accounts: [],
+      categories: [{
+        id: 'cat-1',
+        organization_id: 'org-prymeira',
+        company_id: 'company-prymeira',
+        name: 'Tarifas',
+        kind: 'expense',
+        parent_category_id: null,
+        is_active: true,
+        created_at: '2026-04-22T09:00:00.000Z',
+        updated_at: '2026-04-22T09:00:00.000Z'
+      }],
+      cost_centers: [{
+        id: 'cc-1',
+        organization_id: 'org-prymeira',
+        name: 'Operações',
+        code: null,
+        is_active: true,
+        created_at: '2026-04-22T09:00:00.000Z',
+        updated_at: '2026-04-22T09:00:00.000Z'
+      }],
+      payment_methods: [{
+        id: 'pm-1',
+        organization_id: 'org-prymeira',
+        name: 'PIX',
+        kind: 'pix',
+        is_active: true,
+        created_at: '2026-04-22T09:00:00.000Z',
+        updated_at: '2026-04-22T09:00:00.000Z'
+      }]
+    }),
     listTransactions: vi.fn().mockResolvedValue({ transactions: [] }),
     listImportJobs: vi.fn().mockResolvedValue({ company_id: null, company_name: null, jobs: [] }),
     listStatementEntries: vi.fn().mockResolvedValue({ company_id: null, company_name: null, entries: [] }),

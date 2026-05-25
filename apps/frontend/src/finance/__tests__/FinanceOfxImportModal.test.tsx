@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { FinanceOfxImportModal } from '../components/FinanceOfxImportModal';
-import type { FinanceAccount, FinanceOfxApproveResult, FinanceOfxPreview } from '../api';
+import type { FinanceAccount, FinanceCategory, FinanceCostCenter, FinanceEntity, FinanceOfxApproveResult, FinanceOfxPreview, FinancePaymentMethod } from '../api';
 
 const account: FinanceAccount = {
   id: 'acc-1',
@@ -46,7 +46,8 @@ const preview: FinanceOfxPreview = {
         normalized_description: 'tarifa bancaria',
         reference_code: 'fee-1',
         balance_cents: null,
-        dedupe_hash: 'dedupe-1'
+        dedupe_hash: 'dedupe-1',
+        invalid_reason: null
       },
       decision_type: 'new_transaction',
       confidence_score: 0.86,
@@ -79,7 +80,8 @@ const preview: FinanceOfxPreview = {
         normalized_description: 'cliente sol',
         reference_code: 'rec-1',
         balance_cents: null,
-        dedupe_hash: 'dedupe-2'
+        dedupe_hash: 'dedupe-2',
+        invalid_reason: null
       },
       decision_type: 'receivable_match',
       confidence_score: 0.93,
@@ -112,7 +114,8 @@ const preview: FinanceOfxPreview = {
         normalized_description: 'lancamento duplicado',
         reference_code: 'dup-1',
         balance_cents: null,
-        dedupe_hash: 'dedupe-3'
+        dedupe_hash: 'dedupe-3',
+        invalid_reason: null
       },
       decision_type: 'duplicate',
       confidence_score: 1,
@@ -163,6 +166,56 @@ const approveResult = {
   transactions: []
 } satisfies FinanceOfxApproveResult;
 
+const reviewEntities: FinanceEntity[] = [
+  {
+    id: 'entity-edited',
+    organization_id: 'org-holand',
+    legal_name: 'Fornecedor Editado',
+    trade_name: null,
+    document_number: null,
+    kind: 'supplier',
+    email: null,
+    phone: null,
+    is_active: true,
+    created_at: '2026-05-25T00:00:00.000Z',
+    updated_at: '2026-05-25T00:00:00.000Z'
+  }
+];
+
+const reviewCategories: FinanceCategory[] = [
+  {
+    id: 'cat-edited',
+    organization_id: 'org-holand',
+    company_id: 'company-a',
+    name: 'Tarifas revisadas',
+    kind: 'expense',
+    parent_category_id: null,
+    is_active: true,
+    created_at: '2026-05-25T00:00:00.000Z',
+    updated_at: '2026-05-25T00:00:00.000Z'
+  }
+];
+
+const reviewCostCenters: FinanceCostCenter[] = [{
+  id: 'cost-edited',
+  organization_id: 'org-holand',
+  name: 'Financeiro',
+  code: null,
+  is_active: true,
+  created_at: '2026-05-25T00:00:00.000Z',
+  updated_at: '2026-05-25T00:00:00.000Z'
+}];
+
+const reviewPaymentMethods: FinancePaymentMethod[] = [{
+  id: 'pm-edited',
+  organization_id: 'org-holand',
+  name: 'PIX',
+  kind: 'pix',
+  is_active: true,
+  created_at: '2026-05-25T00:00:00.000Z',
+  updated_at: '2026-05-25T00:00:00.000Z'
+}];
+
 function renderModal(overrides: Partial<Parameters<typeof FinanceOfxImportModal>[0]> = {}) {
   const props = {
     open: true,
@@ -171,6 +224,10 @@ function renderModal(overrides: Partial<Parameters<typeof FinanceOfxImportModal>
     onApprove: vi.fn().mockResolvedValue(approveResult),
     onClose: vi.fn(),
     onApproved: vi.fn(),
+    entities: reviewEntities,
+    categories: reviewCategories,
+    costCenters: reviewCostCenters,
+    paymentMethods: reviewPaymentMethods,
     ...overrides
   };
 
@@ -184,6 +241,43 @@ test('FinanceOfxImportModal renders null when closed', () => {
   renderModal({ open: false });
 
   expect(screen.queryByRole('dialog', { name: 'Importar OFX' })).not.toBeInTheDocument();
+});
+
+test('FinanceOfxImportModal lets reviewers edit financial fields before approval', async () => {
+  const user = userEvent.setup();
+  const { props } = renderModal();
+  const ofxText = '<OFX><BANKTRANLIST><STMTTRN><DTPOSTED>20260524<TRNAMT>-19.90<MEMO>TARIFA</STMTTRN></BANKTRANLIST></OFX>';
+
+  await user.selectOptions(screen.getByLabelText('Conta bancária'), 'acc-1');
+  await user.upload(screen.getByLabelText('Arquivo OFX'), new File([ofxText], 'maio.ofx', { type: 'application/x-ofx' }));
+  await user.click(screen.getByRole('button', { name: 'Gerar prévia' }));
+
+  await screen.findByText('TARIFA BANCARIA');
+  await user.selectOptions(screen.getByLabelText('Entidade TARIFA BANCARIA'), 'entity-edited');
+  await user.selectOptions(screen.getByLabelText('Categoria TARIFA BANCARIA'), 'cat-edited');
+  await user.selectOptions(screen.getByLabelText('Centro de custo TARIFA BANCARIA'), 'cost-edited');
+  await user.selectOptions(screen.getByLabelText('Forma de pagamento TARIFA BANCARIA'), 'pm-edited');
+  await user.clear(screen.getByLabelText('Nota TARIFA BANCARIA'));
+  await user.type(screen.getByLabelText('Nota TARIFA BANCARIA'), 'Tarifa revisada');
+  await user.click(screen.getByLabelText('Salvar memória TARIFA BANCARIA'));
+
+  await user.click(screen.getByRole('button', { name: 'Aprovar lote' }));
+
+  await waitFor(() => {
+    expect(props.onApprove).toHaveBeenCalledWith(expect.objectContaining({
+      approved_items: expect.arrayContaining([
+        expect.objectContaining({
+          draft_item_id: 'ofx-line-1',
+          financial_entity_id: 'entity-edited',
+          financial_category_id: 'cat-edited',
+          financial_cost_center_id: 'cost-edited',
+          financial_payment_method_id: 'pm-edited',
+          note: 'Tarifa revisada',
+          save_memory: false
+        })
+      ])
+    }));
+  });
 });
 
 test('FinanceOfxImportModal previews file and approves checked items', async () => {
@@ -210,12 +304,12 @@ test('FinanceOfxImportModal previews file and approves checked items', async () 
   const receivableRow = screen.getByRole('row', { name: /CLIENTE SOL/ });
   const duplicateRow = screen.getByRole('row', { name: /LANCAMENTO DUPLICADO/ });
 
-  expect(within(feeRow).getByRole('checkbox')).toBeChecked();
-  expect(within(receivableRow).getByRole('checkbox')).toBeChecked();
-  expect(within(duplicateRow).getByRole('checkbox')).not.toBeChecked();
-  expect(within(duplicateRow).getByRole('checkbox')).toBeDisabled();
+  expect(within(feeRow).getByRole('checkbox', { name: 'Aprovar TARIFA BANCARIA' })).toBeChecked();
+  expect(within(receivableRow).getByRole('checkbox', { name: 'Aprovar CLIENTE SOL' })).toBeChecked();
+  expect(within(duplicateRow).getByRole('checkbox', { name: 'Aprovar LANCAMENTO DUPLICADO' })).not.toBeChecked();
+  expect(within(duplicateRow).getByRole('checkbox', { name: 'Aprovar LANCAMENTO DUPLICADO' })).toBeDisabled();
 
-  await user.click(within(receivableRow).getByRole('checkbox'));
+  await user.click(within(receivableRow).getByRole('checkbox', { name: 'Aprovar CLIENTE SOL' }));
   await user.click(screen.getByRole('button', { name: 'Aprovar lote' }));
 
   await waitFor(() => {

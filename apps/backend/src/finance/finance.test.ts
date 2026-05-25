@@ -6476,6 +6476,22 @@ test('OFX approval rejects unsafe client decisions before writes', async () => {
     assert.equal(duplicateInFilePreviewRes.body.items[1].decision_type, 'duplicate');
     assert.equal(duplicateInFilePreviewRes.body.summary.duplicate_count, 2);
 
+    const invalidLinePreviewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'linha-invalida.ofx',
+        source_file_size_bytes: 256,
+        ofx_text: `<OFX><BANKTRANLIST><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-22.00<FITID>valid-line<MEMO>ATLAS CLOUD</STMTTRN><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>valor-invalido<FITID>bad-line<MEMO>LINHA RUIM</STMTTRN></BANKTRANLIST></OFX>`
+      });
+    assert.equal(invalidLinePreviewRes.status, 200, JSON.stringify(invalidLinePreviewRes.body));
+    assert.equal(invalidLinePreviewRes.body.items.length, 2);
+    assert.equal(invalidLinePreviewRes.body.items[1].decision_type, 'invalid');
+    assert.equal(invalidLinePreviewRes.body.items[1].confidence_band, 'blocked');
+    assert.match(invalidLinePreviewRes.body.items[1].blocking_reason, /valor válido/);
+    assert.equal(invalidLinePreviewRes.body.summary.blocked_count, 1);
+
     const previewRes = await request(app)
       .post('/finance/reconciliation/ofx/preview')
       .set('Authorization', `Bearer ${token}`)
