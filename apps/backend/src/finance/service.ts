@@ -78,6 +78,8 @@ import type {
 } from './types.js';
 
 const DEFAULT_ORGANIZATION_ID = 'org-holand';
+export const FINANCE_OFX_TEXT_MAX_LENGTH = 2 * 1024 * 1024;
+export const FINANCE_OFX_MAX_ITEMS = 2_000;
 type FinanceOperationalGroupKey = 'overdue' | 'due_today' | 'upcoming' | 'settled';
 
 function resolveDefaultStatus(input: {
@@ -5128,6 +5130,28 @@ function listCompanyCompatibleTransactionIds(organizationId: string, companyId: 
   return new Set(rows.map((row) => row.id));
 }
 
+function listMatchedReconciliationTransactionIds(organizationId: string) {
+  const rows = db.prepare(`
+    select distinct financial_transaction_id as id
+    from financial_reconciliation_match
+    where organization_id = ?
+      and match_status = 'matched'
+  `).all(organizationId) as Array<{ id: string }>;
+  return new Set(rows.map((row) => row.id));
+}
+
+function assertOfxTextLimit(ofxText: string) {
+  if (ofxText.length > FINANCE_OFX_TEXT_MAX_LENGTH) {
+    throw new Error('Arquivo OFX excede o limite de tamanho permitido.');
+  }
+}
+
+function assertOfxLineLimit(lineCount: number) {
+  if (lineCount > FINANCE_OFX_MAX_ITEMS) {
+    throw new Error(`Arquivo OFX excede o limite de ${FINANCE_OFX_MAX_ITEMS} linhas.`);
+  }
+}
+
 export function previewFinanceOfxReconciliation(input: FinanceOfxPreviewRequest): FinanceOfxPreviewDto {
   const normalizedOrganizationId = resolveOrganizationId(input.organization_id);
   readOrganizationRow(normalizedOrganizationId);
@@ -5138,13 +5162,16 @@ export function previewFinanceOfxReconciliation(input: FinanceOfxPreviewRequest)
     throw new Error('Conta financeira não pertence à empresa selecionada.');
   }
 
+  assertOfxTextLimit(input.ofx_text);
   const parsed = parseFinanceOfx({
     organization_id: normalizedOrganizationId,
     financial_account_id: input.financial_account_id,
     source_file_name: input.source_file_name,
     ofx_text: input.ofx_text
   });
+  assertOfxLineLimit(parsed.lines.length);
   const companyCompatibleTransactionIds = listCompanyCompatibleTransactionIds(normalizedOrganizationId, companyId);
+  const matchedTransactionIds = listMatchedReconciliationTransactionIds(normalizedOrganizationId);
 
   const items = buildFinanceReconciliationDraftItems({
     financial_account_id: input.financial_account_id,
@@ -5162,6 +5189,7 @@ export function previewFinanceOfxReconciliation(input: FinanceOfxPreviewRequest)
     transactions: listFinanceTransactions(normalizedOrganizationId).transactions
       .filter((transaction) => (
         (!companyCompatibleTransactionIds || companyCompatibleTransactionIds.has(transaction.id))
+        && !matchedTransactionIds.has(transaction.id)
         && (!transaction.financial_account_id || transaction.financial_account_id === input.financial_account_id)
       )),
     memories: readReconciliationMemories(normalizedOrganizationId, input.financial_account_id, companyId),
@@ -5393,6 +5421,101 @@ function validateLedgerReconciliationTarget(input: {
   return row;
 }
 
+type OfxApprovalDimensions = {
+  financial_entity_id: string | null;
+  financial_category_id: string | null;
+  financial_cost_center_id: string | null;
+  financial_payment_method_id: string | null;
+};
+
+function resolveOptionalCatalogId(value: string | null | undefined, fallback: string | null | undefined) {
+  const selected = value === undefined ? fallback : value;
+  return selected?.trim() || null;
+}
+
+function assertFinanceCostCenterExists(organizationId: string, costCenterId: string) {
+  const row = db.prepare(`
+    select id
+    from financial_cost_center
+    where organization_id = ?
+      and id = ?
+    limit 1
+  `).get(organizationId, costCenterId) as { id: string } | undefined;
+  if (!row) {
+    throw new Error('Centro de custo financeiro não encontrado.');
+  }
+}
+
+function assertFinancePaymentMethodExists(organizationId: string, paymentMethodId: string) {
+  const row = db.prepare(`
+    select id
+    from financial_payment_method
+    where organization_id = ?
+      and id = ?
+    limit 1
+  `).get(organizationId, paymentMethodId) as { id: string } | undefined;
+  if (!row) {
+    throw new Error('Forma de pagamento financeira não encontrada.');
+  }
+}
+
+function validateOfxApprovalDimensions(input: {
+  organization_id: string;
+  company_id: string | null;
+  direction: 'inflow' | 'outflow';
+  approval: FinanceOfxApproveInput['approved_items'][number];
+  proposed: FinanceOfxPreviewDto['items'][number]['proposed'];
+}): OfxApprovalDimensions {
+  const dimensions = {
+    financial_entity_id: resolveOptionalCatalogId(input.approval.financial_entity_id, input.proposed.financial_entity_id),
+    financial_category_id: resolveOptionalCatalogId(input.approval.financial_category_id, input.proposed.financial_category_id),
+    financial_cost_center_id: resolveOptionalCatalogId(input.approval.financial_cost_center_id, input.proposed.financial_cost_center_id),
+    financial_payment_method_id: resolveOptionalCatalogId(input.approval.financial_payment_method_id, input.proposed.financial_payment_method_id)
+  };
+
+  if (dimensions.financial_entity_id) {
+    readFinanceEntityRow(input.organization_id, dimensions.financial_entity_id);
+  }
+  if (dimensions.financial_category_id) {
+    const category = readFinanceCategoryRow(input.organization_id, dimensions.financial_category_id);
+    if (input.company_id && category.company_id && category.company_id !== input.company_id) {
+      throw new Error('Categoria financeira não pertence à empresa da prévia OFX.');
+    }
+    const expectedKind = input.direction === 'outflow' ? 'expense' : 'income';
+    if (category.kind !== expectedKind) {
+      throw new Error('Categoria financeira não é compatível com a direção do OFX.');
+    }
+  }
+  if (dimensions.financial_cost_center_id) {
+    assertFinanceCostCenterExists(input.organization_id, dimensions.financial_cost_center_id);
+  }
+  if (dimensions.financial_payment_method_id) {
+    assertFinancePaymentMethodExists(input.organization_id, dimensions.financial_payment_method_id);
+  }
+
+  return dimensions;
+}
+
+function assignSettlementTransactionAccountIfMissing(input: {
+  organization_id: string;
+  transaction_id: string;
+  financial_account_id: string;
+}) {
+  db.prepare(`
+    update financial_transaction
+    set financial_account_id = ?,
+        updated_at = ?
+    where organization_id = ?
+      and id = ?
+      and financial_account_id is null
+  `).run(
+    input.financial_account_id,
+    new Date().toISOString(),
+    input.organization_id,
+    input.transaction_id
+  );
+}
+
 export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): FinanceOfxApproveResultDto {
   const normalizedOrganizationId = resolveOrganizationId(input.organization_id);
   const preview = previewFinanceOfxReconciliation({ ...input, organization_id: normalizedOrganizationId });
@@ -5490,16 +5613,24 @@ export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): 
       });
       const anchorDate = line.posted_at ?? line.statement_date;
       let transactionId: string;
+      let approvedDimensions: OfxApprovalDimensions | null = null;
 
       if (approval.decision_type === 'new_transaction') {
+        approvedDimensions = validateOfxApprovalDimensions({
+          organization_id: normalizedOrganizationId,
+          company_id: preview.company_id,
+          direction: lineDirection(line),
+          approval,
+          proposed: item.proposed
+        });
         const transaction = createFinanceTransaction({
           organization_id: normalizedOrganizationId,
           company_id: preview.company_id,
-          financial_entity_id: approval.financial_entity_id ?? item.proposed.financial_entity_id,
+          financial_entity_id: approvedDimensions.financial_entity_id,
           financial_account_id: preview.financial_account_id,
-          financial_category_id: approval.financial_category_id ?? item.proposed.financial_category_id,
-          financial_cost_center_id: approval.financial_cost_center_id ?? item.proposed.financial_cost_center_id,
-          financial_payment_method_id: approval.financial_payment_method_id ?? item.proposed.financial_payment_method_id,
+          financial_category_id: approvedDimensions.financial_category_id,
+          financial_cost_center_id: approvedDimensions.financial_cost_center_id,
+          financial_payment_method_id: approvedDimensions.financial_payment_method_id,
           kind: line.amount_cents >= 0 ? 'income' : 'expense',
           status: 'settled',
           amount_cents: Math.abs(line.amount_cents),
@@ -5558,6 +5689,13 @@ export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): 
           throw new Error('Baixa de conta a pagar não gerou lançamento financeiro para conciliar.');
         }
         transactionId = settled.financial_transaction_id;
+        if (!payable.financial_account_id) {
+          assignSettlementTransactionAccountIfMissing({
+            organization_id: normalizedOrganizationId,
+            transaction_id: transactionId,
+            financial_account_id: preview.financial_account_id
+          });
+        }
         const transaction = readTransactionRow(transactionId, { organizationId: normalizedOrganizationId, onlyActive: true });
         if (transaction) transactions.push(mapTransactionRow(transaction));
       } else {
@@ -5595,6 +5733,13 @@ export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): 
           throw new Error('Baixa de conta a receber não gerou lançamento financeiro para conciliar.');
         }
         transactionId = settled.financial_transaction_id;
+        if (!receivable.financial_account_id) {
+          assignSettlementTransactionAccountIfMissing({
+            organization_id: normalizedOrganizationId,
+            transaction_id: transactionId,
+            financial_account_id: preview.financial_account_id
+          });
+        }
         const transaction = readTransactionRow(transactionId, { organizationId: normalizedOrganizationId, onlyActive: true });
         if (transaction) transactions.push(mapTransactionRow(transaction));
       }
@@ -5611,16 +5756,23 @@ export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): 
       }));
 
       if (approval.save_memory) {
+        approvedDimensions ??= validateOfxApprovalDimensions({
+          organization_id: normalizedOrganizationId,
+          company_id: preview.company_id,
+          direction: lineDirection(line),
+          approval,
+          proposed: item.proposed
+        });
         upsertReconciliationMemory({
           organization_id: normalizedOrganizationId,
           company_id: preview.company_id,
           financial_account_id: preview.financial_account_id,
           normalized_pattern: line.normalized_description,
           direction: line.amount_cents >= 0 ? 'inflow' : 'outflow',
-          financial_entity_id: approval.financial_entity_id ?? item.proposed.financial_entity_id,
-          financial_category_id: approval.financial_category_id ?? item.proposed.financial_category_id,
-          financial_cost_center_id: approval.financial_cost_center_id ?? item.proposed.financial_cost_center_id,
-          financial_payment_method_id: approval.financial_payment_method_id ?? item.proposed.financial_payment_method_id
+          financial_entity_id: approvedDimensions.financial_entity_id,
+          financial_category_id: approvedDimensions.financial_category_id,
+          financial_cost_center_id: approvedDimensions.financial_cost_center_id,
+          financial_payment_method_id: approvedDimensions.financial_payment_method_id
         });
       }
 

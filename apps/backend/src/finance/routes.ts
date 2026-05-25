@@ -26,6 +26,8 @@ import {
   duplicateFinancePayable,
   duplicateFinanceReceivable,
   ensureFinanceRecurringWindow,
+  FINANCE_OFX_MAX_ITEMS,
+  FINANCE_OFX_TEXT_MAX_LENGTH,
   getFinanceReconciliationInbox,
   createFinancePayableInstallments,
   createFinancePayableRecurrences,
@@ -407,7 +409,7 @@ const ofxPreviewSchema = z.object({
   financial_account_id: z.string().trim().min(1),
   source_file_name: z.string().trim().min(2).max(255),
   source_file_size_bytes: z.number().int().min(0),
-  ofx_text: z.string().min(20)
+  ofx_text: z.string().min(20).max(FINANCE_OFX_TEXT_MAX_LENGTH)
 });
 
 const ofxApprovalItemSchema = z.object({
@@ -427,7 +429,7 @@ const ofxApprovalItemSchema = z.object({
 
 const ofxApproveSchema = ofxPreviewSchema.extend({
   source_file_hash: z.string().trim().min(32).max(128),
-  approved_items: z.array(ofxApprovalItemSchema).min(1)
+  approved_items: z.array(ofxApprovalItemSchema).min(1).max(FINANCE_OFX_MAX_ITEMS)
 });
 
 const debtCreateSchema = z.object({

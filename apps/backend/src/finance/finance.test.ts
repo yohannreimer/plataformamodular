@@ -6891,3 +6891,390 @@ test('OFX approval rejects receivable account mismatch before writes', async () 
     cleanupDbFiles(dbPath);
   }
 });
+
+test('OFX approval validates new transaction catalog dimensions', async () => {
+  const dbPath = assignTestDbPath('finance-ofx-catalog-validation');
+  cleanupDbFiles(dbPath);
+
+  const app = createApp({ forceDbRefresh: true, seedDb: false });
+
+  try {
+    seedFinanceCompanies();
+    createInternalUser({
+      username: 'finance.ofx.catalog',
+      display_name: 'Finance OFX Catalog',
+      password: 'Senha#123',
+      role: 'supremo',
+      permissions: ['finance.read', 'finance.write', 'finance.reconcile']
+    });
+
+    const loginRes = await request(app).post('/auth/login').send({ username: 'finance.ofx.catalog', password: 'Senha#123' });
+    assert.equal(loginRes.status, 200);
+    const token = loginRes.body.token as string;
+
+    const nowIso = '2026-05-24T12:00:00.000Z';
+    db.prepare(`
+      insert into financial_account (
+        id,
+        organization_id,
+        company_id,
+        name,
+        kind,
+        currency,
+        is_active,
+        created_at,
+        updated_at
+      ) values (?, ?, ?, ?, ?, ?, 1, ?, ?)
+    `).run('account-ofx-catalog-company-a', 'org-holand', 'company-a', 'Banco Catálogo OFX', 'bank', 'BRL', nowIso, nowIso);
+    db.prepare(`
+      insert into financial_category (
+        id,
+        organization_id,
+        company_id,
+        name,
+        kind,
+        is_active,
+        created_at,
+        updated_at
+      ) values (?, ?, ?, ?, ?, 1, ?, ?)
+    `).run('category-expense-company-b-ofx', 'org-holand', 'company-b', 'Despesa Empresa B', 'expense', nowIso, nowIso);
+
+    const incomeCategoryRes = await request(app)
+      .post('/finance/categories')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Receitas OFX', kind: 'income' });
+    assert.equal(incomeCategoryRes.status, 201, JSON.stringify(incomeCategoryRes.body));
+
+    const ofxText = `<OFX><BANKTRANLIST><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-44.00<FITID>catalog-1<MEMO>ATLAS CLOUD BACKUP</STMTTRN></BANKTRANLIST></OFX>`;
+    const previewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: 'account-ofx-catalog-company-a',
+        source_file_name: 'catalogo.ofx',
+        source_file_size_bytes: 256,
+        ofx_text: ofxText
+      });
+    assert.equal(previewRes.status, 200, JSON.stringify(previewRes.body));
+    assert.equal(previewRes.body.company_id, 'company-a');
+
+    const wrongKindRes = await request(app)
+      .post('/finance/reconciliation/ofx/approve')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: 'account-ofx-catalog-company-a',
+        source_file_name: 'catalogo.ofx',
+        source_file_size_bytes: 256,
+        source_file_hash: previewRes.body.source_file_hash,
+        ofx_text: ofxText,
+        approved_items: [{
+          draft_item_id: previewRes.body.items[0].id,
+          decision_type: 'new_transaction',
+          approved: true,
+          financial_category_id: incomeCategoryRes.body.id,
+          note: 'Categoria incompatível'
+        }]
+      });
+    assert.notEqual(wrongKindRes.status, 201);
+
+    const otherCompanyCategoryRes = await request(app)
+      .post('/finance/reconciliation/ofx/approve')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: 'account-ofx-catalog-company-a',
+        source_file_name: 'catalogo.ofx',
+        source_file_size_bytes: 256,
+        source_file_hash: previewRes.body.source_file_hash,
+        ofx_text: ofxText,
+        approved_items: [{
+          draft_item_id: previewRes.body.items[0].id,
+          decision_type: 'new_transaction',
+          approved: true,
+          financial_category_id: 'category-expense-company-b-ofx',
+          note: 'Categoria de outra empresa'
+        }]
+      });
+    assert.notEqual(otherCompanyCategoryRes.status, 201);
+    assert.equal(db.prepare('select count(*) as count from financial_import_job').get().count, 0);
+    assert.equal(db.prepare('select count(*) as count from financial_transaction').get().count, 0);
+  } finally {
+    db.close();
+    cleanupDbFiles(dbPath);
+  }
+});
+
+test('OFX approval settles accountless payable and receivable with OFX account', async () => {
+  const dbPath = assignTestDbPath('finance-ofx-accountless-title-settlement');
+  cleanupDbFiles(dbPath);
+
+  const app = createApp({ forceDbRefresh: true, seedDb: false });
+
+  try {
+    seedFinanceCompanies();
+    createInternalUser({
+      username: 'finance.ofx.accountless',
+      display_name: 'Finance OFX Accountless',
+      password: 'Senha#123',
+      role: 'supremo',
+      permissions: ['finance.read', 'finance.write', 'finance.reconcile']
+    });
+
+    const loginRes = await request(app).post('/auth/login').send({ username: 'finance.ofx.accountless', password: 'Senha#123' });
+    assert.equal(loginRes.status, 200);
+    const token = loginRes.body.token as string;
+
+    const accountRes = await request(app)
+      .post('/finance/accounts')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Banco Baixa OFX', kind: 'bank' });
+    assert.equal(accountRes.status, 201, JSON.stringify(accountRes.body));
+
+    const payableRes = await request(app)
+      .post('/finance/payables')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        supplier_name: 'Atlas Cloud',
+        description: 'ATLAS CLOUD BACKUP',
+        amount_cents: 4400,
+        status: 'open',
+        issue_date: '2026-05-24',
+        due_date: '2026-05-24'
+      });
+    assert.equal(payableRes.status, 201, JSON.stringify(payableRes.body));
+
+    const payableOfxText = `<OFX><BANKTRANLIST><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-44.00<FITID>accountless-payable-1<MEMO>ATLAS CLOUD BACKUP</STMTTRN></BANKTRANLIST></OFX>`;
+    const payablePreviewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'payable-accountless.ofx',
+        source_file_size_bytes: 256,
+        ofx_text: payableOfxText
+      });
+    assert.equal(payablePreviewRes.status, 200, JSON.stringify(payablePreviewRes.body));
+    assert.equal(payablePreviewRes.body.items[0].decision_type, 'payable_match');
+
+    const payableApproveRes = await request(app)
+      .post('/finance/reconciliation/ofx/approve')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'payable-accountless.ofx',
+        source_file_size_bytes: 256,
+        source_file_hash: payablePreviewRes.body.source_file_hash,
+        ofx_text: payableOfxText,
+        approved_items: [{
+          draft_item_id: payablePreviewRes.body.items[0].id,
+          decision_type: 'payable_match',
+          approved: true,
+          payable_id: payableRes.body.id
+        }]
+      });
+    assert.equal(payableApproveRes.status, 201, JSON.stringify(payableApproveRes.body));
+    assert.equal(payableApproveRes.body.transactions[0].financial_account_id, accountRes.body.id);
+
+    const receivableRes = await request(app)
+      .post('/finance/receivables')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        customer_name: 'Atlas Cloud',
+        description: 'ATLAS CLOUD LICENCA',
+        amount_cents: 5500,
+        status: 'open',
+        issue_date: '2026-05-24',
+        due_date: '2026-05-24'
+      });
+    assert.equal(receivableRes.status, 201, JSON.stringify(receivableRes.body));
+
+    const receivableOfxText = `<OFX><BANKTRANLIST><STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20260524<TRNAMT>55.00<FITID>accountless-receivable-1<MEMO>ATLAS CLOUD LICENCA</STMTTRN></BANKTRANLIST></OFX>`;
+    const receivablePreviewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'receivable-accountless.ofx',
+        source_file_size_bytes: 256,
+        ofx_text: receivableOfxText
+      });
+    assert.equal(receivablePreviewRes.status, 200, JSON.stringify(receivablePreviewRes.body));
+    assert.equal(receivablePreviewRes.body.items[0].decision_type, 'receivable_match');
+
+    const receivableApproveRes = await request(app)
+      .post('/finance/reconciliation/ofx/approve')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'receivable-accountless.ofx',
+        source_file_size_bytes: 256,
+        source_file_hash: receivablePreviewRes.body.source_file_hash,
+        ofx_text: receivableOfxText,
+        approved_items: [{
+          draft_item_id: receivablePreviewRes.body.items[0].id,
+          decision_type: 'receivable_match',
+          approved: true,
+          receivable_id: receivableRes.body.id
+        }]
+      });
+    assert.equal(receivableApproveRes.status, 201, JSON.stringify(receivableApproveRes.body));
+    assert.equal(receivableApproveRes.body.transactions[0].financial_account_id, accountRes.body.id);
+  } finally {
+    db.close();
+    cleanupDbFiles(dbPath);
+  }
+});
+
+test('OFX preview ignores ledger transactions already matched', async () => {
+  const dbPath = assignTestDbPath('finance-ofx-ledger-already-matched');
+  cleanupDbFiles(dbPath);
+
+  const app = createApp({ forceDbRefresh: true, seedDb: false });
+
+  try {
+    seedFinanceCompanies();
+    createInternalUser({
+      username: 'finance.ofx.matched',
+      display_name: 'Finance OFX Matched',
+      password: 'Senha#123',
+      role: 'supremo',
+      permissions: ['finance.read', 'finance.write', 'finance.reconcile']
+    });
+
+    const loginRes = await request(app).post('/auth/login').send({ username: 'finance.ofx.matched', password: 'Senha#123' });
+    assert.equal(loginRes.status, 200);
+    const token = loginRes.body.token as string;
+
+    const accountRes = await request(app)
+      .post('/finance/accounts')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Banco Ledger Conciliado', kind: 'bank' });
+    assert.equal(accountRes.status, 201, JSON.stringify(accountRes.body));
+
+    const transactionRes = await request(app)
+      .post('/finance/transactions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: accountRes.body.id,
+        kind: 'expense',
+        status: 'open',
+        amount_cents: 6600,
+        due_date: '2026-05-24',
+        note: 'ATLAS CLOUD SUPORTE'
+      });
+    assert.equal(transactionRes.status, 201, JSON.stringify(transactionRes.body));
+
+    const nowIso = '2026-05-24T12:00:00.000Z';
+    db.prepare(`
+      insert into financial_bank_statement_entry (
+        id,
+        organization_id,
+        financial_account_id,
+        statement_date,
+        amount_cents,
+        description,
+        dedupe_hash,
+        source,
+        created_at,
+        updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'stmt-ledger-already-matched',
+      'org-holand',
+      accountRes.body.id,
+      '2026-05-24',
+      -6600,
+      'ATLAS CLOUD SUPORTE',
+      'already-matched-dedupe',
+      'ofx',
+      nowIso,
+      nowIso
+    );
+    db.prepare(`
+      insert into financial_reconciliation_match (
+        id,
+        organization_id,
+        financial_bank_statement_entry_id,
+        financial_transaction_id,
+        match_type,
+        match_status,
+        matched_amount_cents,
+        matched_at,
+        created_at,
+        updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'match-ledger-already-matched',
+      'org-holand',
+      'stmt-ledger-already-matched',
+      transactionRes.body.id,
+      'manual',
+      'matched',
+      6600,
+      nowIso,
+      nowIso,
+      nowIso
+    );
+
+    const ofxText = `<OFX><BANKTRANLIST><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-66.00<FITID>ledger-already-matched-preview<MEMO>ATLAS CLOUD SUPORTE</STMTTRN></BANKTRANLIST></OFX>`;
+    const previewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'ledger-ja-conciliado.ofx',
+        source_file_size_bytes: 256,
+        ofx_text: ofxText
+      });
+    assert.equal(previewRes.status, 200, JSON.stringify(previewRes.body));
+    assert.equal(previewRes.body.items[0].decision_type, 'needs_review');
+    assert.equal(previewRes.body.items[0].target.financial_transaction_id, undefined);
+  } finally {
+    db.close();
+    cleanupDbFiles(dbPath);
+  }
+});
+
+test('OFX preview rejects files above parsed line limit', async () => {
+  const dbPath = assignTestDbPath('finance-ofx-line-limit');
+  cleanupDbFiles(dbPath);
+
+  const app = createApp({ forceDbRefresh: true, seedDb: false });
+
+  try {
+    seedFinanceCompanies();
+    createInternalUser({
+      username: 'finance.ofx.limit',
+      display_name: 'Finance OFX Limit',
+      password: 'Senha#123',
+      role: 'supremo',
+      permissions: ['finance.read', 'finance.write', 'finance.reconcile']
+    });
+
+    const loginRes = await request(app).post('/auth/login').send({ username: 'finance.ofx.limit', password: 'Senha#123' });
+    assert.equal(loginRes.status, 200);
+    const token = loginRes.body.token as string;
+
+    const accountRes = await request(app)
+      .post('/finance/accounts')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Banco Limite OFX', kind: 'bank' });
+    assert.equal(accountRes.status, 201, JSON.stringify(accountRes.body));
+
+    const lines = Array.from({ length: 2001 }, (_, index) => (
+      `<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-1.00<FITID>line-limit-${index}<MEMO>LIMITE OFX ${index}</STMTTRN>`
+    )).join('');
+    const limitRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'limite.ofx',
+        source_file_size_bytes: 1024,
+        ofx_text: `<OFX><BANKTRANLIST>${lines}</BANKTRANLIST></OFX>`
+      });
+    assert.notEqual(limitRes.status, 200);
+  } finally {
+    db.close();
+    cleanupDbFiles(dbPath);
+  }
+});
