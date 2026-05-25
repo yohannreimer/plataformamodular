@@ -3839,15 +3839,25 @@ function mapReconciliationRow(row: {
 
 export function listExistingStatementDedupeHashes(organizationId: string, financialAccountId: string, hashes: string[]) {
   if (hashes.length === 0) return new Set<string>();
-  const placeholders = hashes.map(() => '?').join(', ');
-  const rows = db.prepare(`
-    select dedupe_hash
-    from financial_bank_statement_entry
-    where organization_id = ?
-      and financial_account_id = ?
-      and dedupe_hash in (${placeholders})
-  `).all(organizationId, financialAccountId, ...hashes) as Array<{ dedupe_hash: string | null }>;
-  return new Set(rows.map((row) => row.dedupe_hash).filter((hash): hash is string => Boolean(hash)));
+  const existingHashes = new Set<string>();
+  const chunkSize = 400;
+  for (let index = 0; index < hashes.length; index += chunkSize) {
+    const chunk = hashes.slice(index, index + chunkSize);
+    const placeholders = chunk.map(() => '?').join(', ');
+    const rows = db.prepare(`
+      select dedupe_hash
+      from financial_bank_statement_entry
+      where organization_id = ?
+        and financial_account_id = ?
+        and dedupe_hash in (${placeholders})
+    `).all(organizationId, financialAccountId, ...chunk) as Array<{ dedupe_hash: string | null }>;
+    for (const row of rows) {
+      if (row.dedupe_hash) {
+        existingHashes.add(row.dedupe_hash);
+      }
+    }
+  }
+  return existingHashes;
 }
 
 export function listFinanceReconciliationMemory(

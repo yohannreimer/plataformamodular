@@ -60,17 +60,28 @@ const WEAK_MEMORY_BLOCKING_REASON = 'Memória financeira com confiança insufici
 const SETTLEMENT_STATUSES = new Set(['open', 'partial', 'overdue']);
 const MIN_MATCH_SCORE = 0.6;
 const AMBIGUOUS_SCORE_GAP = 0.04;
-const GENERIC_MEMORY_TOKENS = new Set([
+const GENERIC_RECONCILIATION_TOKENS = new Set([
   'pix',
   'pagto',
   'pagamento',
   'pago',
+  'boleto',
+  'tarifa',
   'ted',
   'doc',
   'transf',
   'transferencia',
   'recebimento',
-  'recebido'
+  'recebido',
+  'compra',
+  'cartao',
+  'debito',
+  'credito',
+  'servico',
+  'mensalidade',
+  'banco',
+  'bancaria',
+  'bancario'
 ]);
 
 export function confidenceBand(score: number): FinanceReconciliationDraftItemDto['confidence_band'] {
@@ -462,13 +473,12 @@ function selectMemory(
 function isMeaningfulMemoryPattern(memory: FinanceReconciliationMemoryCandidate) {
   const usefulTokens = usefulMemoryTokens(memory);
   if (usefulTokens.length >= 2) return true;
-  if (usefulTokens.length !== 1 || usefulTokens[0].length < 5) return false;
-  return memory.confidence_score >= 0.8 && memory.usage_count >= 2;
+  return false;
 }
 
 function usefulMemoryTokens(memory: Pick<FinanceReconciliationMemoryCandidate, 'normalized_pattern'>) {
   return reconciliationTokens(memory.normalized_pattern)
-    .filter((token) => !GENERIC_MEMORY_TOKENS.has(token));
+    .filter((token) => !GENERIC_RECONCILIATION_TOKENS.has(token));
 }
 
 function tokenSequenceIncludes(lineTokens: string[], patternTokens: string[]) {
@@ -519,17 +529,14 @@ function descriptionScore(lineDescription: string, candidateParts: Array<string 
 }
 
 function normalizedTextIncludes(haystack: string, needle: string) {
-  const normalizedNeedle = normalizeReconciliationText(needle);
-  return normalizedNeedle
-    .split(/\s+/)
-    .filter((token) => token.length >= 3)
+  return reconciliationTokens(needle)
     .some((token) => ` ${haystack} `.includes(` ${token} `));
 }
 
 function reconciliationTokens(value: string | null | undefined) {
   return normalizeReconciliationText(value)
     .split(/\s+/)
-    .filter((token) => token.length >= 3);
+    .filter((token) => token.length >= 3 && !GENERIC_RECONCILIATION_TOKENS.has(token));
 }
 
 function normalizeReconciliationText(value: string | null | undefined) {

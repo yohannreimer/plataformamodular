@@ -144,7 +144,7 @@ test('draft usa memoria para novo lançamento liquidado quando não há match ex
     duplicateHashes: new Set(),
     memories: [{
       id: 'mem-1',
-      normalized_pattern: 'pagto atlas',
+      normalized_pattern: 'pagto atlas cloud',
       direction: 'outflow',
       financial_entity_id: 'entity-atlas',
       financial_entity_name: 'Atlas Cloud',
@@ -263,6 +263,65 @@ test('draft não seleciona ledger por valor e data sem texto ou entidade', () =>
       settlement_date: null,
       competence_date: null,
       financial_entity_name: 'Fornecedor Distante',
+      financial_account_id: null,
+      amount_cents: 9850
+    })],
+    memories: [],
+    duplicateHashes: new Set()
+  });
+
+  assert.equal(items[0].decision_type, 'needs_review');
+  assert.equal(items[0].target.financial_transaction_id, undefined);
+});
+
+test('draft ignora sobreposição genérica para payable com valor e data iguais', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [ofxLineFixture({
+      description: 'Pagamento boleto banco',
+      normalized_description: 'pagamento boleto banco',
+      statement_date: '2026-05-24',
+      posted_at: '2026-05-24',
+      amount_cents: -9850
+    })],
+    payables: [payableFixture({
+      id: 'pay-generic-overlap',
+      description: 'Pagamento boleto bancario',
+      due_date: '2026-05-24',
+      financial_entity_name: null,
+      financial_account_id: null,
+      amount_cents: 9850,
+      paid_amount_cents: 0
+    })],
+    receivables: [],
+    transactions: [],
+    memories: [],
+    duplicateHashes: new Set()
+  });
+
+  assert.equal(items[0].decision_type, 'needs_review');
+  assert.equal(items[0].target.payable_id, undefined);
+});
+
+test('draft ignora sobreposição genérica para ledger com valor e data iguais', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [ofxLineFixture({
+      description: 'Tarifa servico banco',
+      normalized_description: 'tarifa servico banco',
+      statement_date: '2026-05-24',
+      posted_at: '2026-05-24',
+      amount_cents: -9850
+    })],
+    payables: [],
+    receivables: [],
+    transactions: [transactionFixture({
+      id: 'txn-generic-overlap',
+      note: 'Tarifa bancaria servico',
+      due_date: '2026-05-24',
+      settlement_date: null,
+      competence_date: null,
+      financial_entity_name: null,
       financial_account_id: null,
       amount_cents: 9850
     })],
@@ -478,6 +537,55 @@ test('draft ignora memória genérica pix mesmo com alta confiança', () => {
       usage_count: 100,
       confidence_score: 0.94
     }]
+  });
+
+  assert.equal(items[0].decision_type, 'needs_review');
+  assert.equal(items[0].proposed.financial_entity_id, null);
+});
+
+test('draft ignora memória genérica boleto ou tarifa mesmo com alta confiança', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [ofxLineFixture({
+      description: 'Boleto tarifa banco',
+      normalized_description: 'boleto tarifa banco'
+    })],
+    payables: [],
+    receivables: [],
+    transactions: [],
+    duplicateHashes: new Set(),
+    memories: [
+      {
+        id: 'mem-boleto',
+        normalized_pattern: 'boleto',
+        direction: 'outflow',
+        financial_entity_id: 'entity-boleto',
+        financial_entity_name: 'Boleto',
+        financial_category_id: 'cat-fees',
+        financial_category_name: 'Taxas',
+        financial_cost_center_id: null,
+        financial_cost_center_name: null,
+        financial_payment_method_id: null,
+        financial_payment_method_name: null,
+        usage_count: 100,
+        confidence_score: 0.94
+      },
+      {
+        id: 'mem-tarifa',
+        normalized_pattern: 'tarifa',
+        direction: 'outflow',
+        financial_entity_id: 'entity-tarifa',
+        financial_entity_name: 'Tarifa',
+        financial_category_id: 'cat-fees',
+        financial_category_name: 'Taxas',
+        financial_cost_center_id: null,
+        financial_cost_center_name: null,
+        financial_payment_method_id: null,
+        financial_payment_method_name: null,
+        usage_count: 100,
+        confidence_score: 0.94
+      }
+    ]
   });
 
   assert.equal(items[0].decision_type, 'needs_review');
