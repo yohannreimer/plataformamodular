@@ -6615,3 +6615,88 @@ test('OFX approval rejects unsafe client decisions before writes', async () => {
     cleanupDbFiles(dbPath);
   }
 });
+
+test('OFX approval rejects receivable account mismatch before writes', async () => {
+  const dbPath = assignTestDbPath('finance-ofx-receivable-account-mismatch');
+  cleanupDbFiles(dbPath);
+
+  const app = createApp({ forceDbRefresh: true, seedDb: false });
+
+  try {
+    seedFinanceCompanies();
+    createInternalUser({
+      username: 'finance.ofx.receivable',
+      display_name: 'Finance OFX Receivable',
+      password: 'Senha#123',
+      role: 'supremo',
+      permissions: ['finance.read', 'finance.write', 'finance.reconcile']
+    });
+
+    const loginRes = await request(app).post('/auth/login').send({ username: 'finance.ofx.receivable', password: 'Senha#123' });
+    assert.equal(loginRes.status, 200);
+    const token = loginRes.body.token as string;
+
+    const ofxAccountRes = await request(app)
+      .post('/finance/accounts')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Banco OFX Recebível', kind: 'bank' });
+    assert.equal(ofxAccountRes.status, 201, JSON.stringify(ofxAccountRes.body));
+
+    const titleAccountRes = await request(app)
+      .post('/finance/accounts')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Banco Título Recebível', kind: 'bank' });
+    assert.equal(titleAccountRes.status, 201, JSON.stringify(titleAccountRes.body));
+
+    const receivableRes = await request(app)
+      .post('/finance/receivables')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: titleAccountRes.body.id,
+        customer_name: 'Atlas Cloud',
+        description: 'ATLAS CLOUD',
+        amount_cents: 2200,
+        status: 'open',
+        issue_date: '2026-05-24',
+        due_date: '2026-05-24'
+      });
+    assert.equal(receivableRes.status, 201, JSON.stringify(receivableRes.body));
+
+    const ofxText = `<OFX><BANKTRANLIST><STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20260524<TRNAMT>22.00<FITID>recv-cross-account-1<MEMO>ATLAS CLOUD</STMTTRN></BANKTRANLIST></OFX>`;
+    const previewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: ofxAccountRes.body.id,
+        source_file_name: 'receivable-cross-account.ofx',
+        source_file_size_bytes: 256,
+        ofx_text: ofxText
+      });
+    assert.equal(previewRes.status, 200, JSON.stringify(previewRes.body));
+    assert.equal(previewRes.body.items[0].decision_type, 'receivable_match');
+    assert.equal(previewRes.body.items[0].target.receivable_id, receivableRes.body.id);
+
+    const approveRes = await request(app)
+      .post('/finance/reconciliation/ofx/approve')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: ofxAccountRes.body.id,
+        source_file_name: 'receivable-cross-account.ofx',
+        source_file_size_bytes: 256,
+        source_file_hash: previewRes.body.source_file_hash,
+        ofx_text: ofxText,
+        approved_items: [{
+          draft_item_id: previewRes.body.items[0].id,
+          decision_type: 'receivable_match',
+          approved: true,
+          receivable_id: receivableRes.body.id
+        }]
+      });
+    assert.notEqual(approveRes.status, 201);
+    assert.equal(db.prepare('select count(*) as count from financial_import_job').get().count, 0);
+    assert.equal(db.prepare('select count(*) as count from financial_bank_statement_entry').get().count, 0);
+  } finally {
+    db.close();
+    cleanupDbFiles(dbPath);
+  }
+});
