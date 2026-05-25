@@ -82,6 +82,34 @@ const ledgerTransaction = {
   is_deleted: false
 } as FinanceTransactionDto;
 
+function payableFixture(overrides: Partial<FinancePayableDto> = {}): FinancePayableDto {
+  return {
+    ...payable,
+    ...overrides
+  } as FinancePayableDto;
+}
+
+function receivableFixture(overrides: Partial<FinanceReceivableDto> = {}): FinanceReceivableDto {
+  return {
+    ...receivable,
+    ...overrides
+  } as FinanceReceivableDto;
+}
+
+function transactionFixture(overrides: Partial<FinanceTransactionDto> = {}): FinanceTransactionDto {
+  return {
+    ...ledgerTransaction,
+    ...overrides
+  } as FinanceTransactionDto;
+}
+
+function ofxLineFixture(overrides: Partial<FinanceOfxLineDto> = {}): FinanceOfxLineDto {
+  return {
+    ...lineOut,
+    ...overrides
+  };
+}
+
 test('confidenceBand classifica score nos limites aprovados', () => {
   assert.equal(confidenceBand(0.95), 'auto');
   assert.equal(confidenceBand(0.8), 'ready');
@@ -151,4 +179,219 @@ test('draft bloqueia hashes duplicados', () => {
   assert.equal(items[0].decision_type, 'duplicate');
   assert.equal(items[0].confidence_band, 'blocked');
   assert.equal(items[0].blocking_reason, 'Linha OFX já importada para esta conta.');
+});
+
+test('draft não promove match por valor exato sem evidência útil', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [ofxLineFixture({
+      description: 'Tarifa avulsa banco',
+      normalized_description: 'tarifa avulsa banco',
+      statement_date: '2026-05-24',
+      posted_at: '2026-05-24',
+      amount_cents: -9850
+    })],
+    payables: [payableFixture({
+      id: 'pay-unrelated',
+      description: 'Despesa sem relação',
+      due_date: '2026-06-30',
+      financial_entity_name: 'Fornecedor Distante',
+      financial_account_id: null,
+      amount_cents: 9850,
+      paid_amount_cents: 0
+    })],
+    receivables: [],
+    transactions: [transactionFixture({
+      id: 'txn-unrelated',
+      note: 'Lançamento sem relação',
+      due_date: '2026-06-30',
+      financial_entity_name: 'Fornecedor Distante'
+    })],
+    memories: [],
+    duplicateHashes: new Set()
+  });
+
+  assert.equal(items[0].decision_type, 'needs_review');
+  assert.equal(items[0].confidence_band, 'blocked');
+});
+
+test('draft bloqueia ambiguidade entre títulos do mesmo tipo', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [lineOut],
+    payables: [
+      payableFixture({ id: 'pay-1' }),
+      payableFixture({ id: 'pay-2' })
+    ],
+    receivables: [],
+    transactions: [],
+    memories: [],
+    duplicateHashes: new Set()
+  });
+
+  assert.equal(items[0].decision_type, 'needs_review');
+  assert.equal(items[0].blocking_reason, 'Mais de um título possível para esta linha.');
+});
+
+test('draft não reutiliza o mesmo alvo em duas linhas OFX', () => {
+  const secondLine = ofxLineFixture({
+    id: 'ofx-line-second',
+    dedupe_hash: 'hash-second'
+  });
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [lineOut, secondLine],
+    payables: [payable],
+    receivables: [],
+    transactions: [],
+    memories: [],
+    duplicateHashes: new Set()
+  });
+
+  assert.equal(items[0].decision_type, 'payable_match');
+  assert.equal(items[0].target.payable_id, 'pay-1');
+  assert.notEqual(items[1].target.payable_id, 'pay-1');
+  assert.equal(items[1].decision_type, 'needs_review');
+});
+
+test('draft sugere pagamento parcial sem autoaprovar', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [ofxLineFixture({
+      amount_cents: -5000,
+      description: 'Pagto parcial Atlas Cloud',
+      normalized_description: 'pagto parcial atlas cloud'
+    })],
+    payables: [payableFixture({
+      amount_cents: 9850,
+      paid_amount_cents: 0
+    })],
+    receivables: [],
+    transactions: [],
+    memories: [],
+    duplicateHashes: new Set()
+  });
+
+  assert.equal(items[0].decision_type, 'payable_match');
+  assert.equal(items[0].confidence_band, 'review');
+  assert.equal(items[0].reasons.some((reason) => reason.label === 'Pagamento parcial'), true);
+});
+
+test('draft sugere recebimento parcial sem autoaprovar', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [ofxLineFixture({
+      ...lineIn,
+      amount_cents: 150000,
+      description: 'PIX parcial Cliente Alfa',
+      normalized_description: 'pix parcial cliente alfa'
+    })],
+    payables: [],
+    receivables: [receivableFixture({
+      amount_cents: 450000,
+      received_amount_cents: 0
+    })],
+    transactions: [],
+    memories: [],
+    duplicateHashes: new Set()
+  });
+
+  assert.equal(items[0].decision_type, 'receivable_match');
+  assert.equal(items[0].confidence_band, 'review');
+  assert.equal(items[0].reasons.some((reason) => reason.label === 'Recebimento parcial'), true);
+});
+
+test('draft bloqueia ambiguidade entre lançamentos ledger', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [lineOut],
+    payables: [],
+    receivables: [],
+    transactions: [
+      transactionFixture({ id: 'txn-1' }),
+      transactionFixture({ id: 'txn-2' })
+    ],
+    memories: [],
+    duplicateHashes: new Set()
+  });
+
+  assert.equal(items[0].decision_type, 'needs_review');
+  assert.equal(items[0].blocking_reason, 'Mais de um lançamento possível para esta linha.');
+});
+
+test('draft prefere memória mais específica e mais confiante', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [lineOut],
+    payables: [],
+    receivables: [],
+    transactions: [],
+    duplicateHashes: new Set(),
+    memories: [
+      {
+        id: 'mem-generic',
+        normalized_pattern: 'pagto',
+        direction: 'outflow',
+        financial_entity_id: 'entity-generic',
+        financial_entity_name: 'Fornecedor Genérico',
+        financial_category_id: 'cat-generic',
+        financial_category_name: 'Geral',
+        financial_cost_center_id: null,
+        financial_cost_center_name: null,
+        financial_payment_method_id: null,
+        financial_payment_method_name: null,
+        usage_count: 20,
+        confidence_score: 0.84
+      },
+      {
+        id: 'mem-specific',
+        normalized_pattern: 'pagto atlas cloud',
+        direction: 'outflow',
+        financial_entity_id: 'entity-atlas',
+        financial_entity_name: 'Atlas Cloud',
+        financial_category_id: 'cat-software',
+        financial_category_name: 'Software',
+        financial_cost_center_id: 'cc-ops',
+        financial_cost_center_name: 'Operações',
+        financial_payment_method_id: 'pm-pix',
+        financial_payment_method_name: 'PIX',
+        usage_count: 2,
+        confidence_score: 0.9
+      }
+    ]
+  });
+
+  assert.equal(items[0].decision_type, 'new_transaction');
+  assert.equal(items[0].proposed.financial_entity_id, 'entity-atlas');
+});
+
+test('draft mantém memória fraca em revisão com campos propostos', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [lineOut],
+    payables: [],
+    receivables: [],
+    transactions: [],
+    duplicateHashes: new Set(),
+    memories: [{
+      id: 'mem-weak',
+      normalized_pattern: 'pagto atlas',
+      direction: 'outflow',
+      financial_entity_id: 'entity-atlas',
+      financial_entity_name: 'Atlas Cloud',
+      financial_category_id: 'cat-software',
+      financial_category_name: 'Software',
+      financial_cost_center_id: 'cc-ops',
+      financial_cost_center_name: 'Operações',
+      financial_payment_method_id: 'pm-pix',
+      financial_payment_method_name: 'PIX',
+      usage_count: 1,
+      confidence_score: 0.55
+    }]
+  });
+
+  assert.equal(items[0].decision_type, 'needs_review');
+  assert.equal(items[0].confidence_band, 'blocked');
+  assert.equal(items[0].proposed.financial_entity_id, 'entity-atlas');
+  assert.equal(items[0].blocking_reason, 'Memória financeira com confiança insuficiente.');
 });
