@@ -253,6 +253,7 @@ test('FinanceOfxImportModal lets reviewers edit financial fields before approval
   await user.click(screen.getByRole('button', { name: 'Gerar prévia' }));
 
   await screen.findByText('TARIFA BANCARIA');
+  await user.click(screen.getByRole('button', { name: 'Editar TARIFA BANCARIA' }));
   await user.clear(screen.getByLabelText('Entidade TARIFA BANCARIA'));
   await user.type(screen.getByLabelText('Entidade TARIFA BANCARIA'), 'Fornecedor Editado');
   await user.clear(screen.getByLabelText('Categoria TARIFA BANCARIA'));
@@ -296,6 +297,7 @@ test('FinanceOfxImportModal sends typed names for inline catalog creation', asyn
   await user.click(screen.getByRole('button', { name: 'Gerar prévia' }));
 
   await screen.findByText('TARIFA BANCARIA');
+  await user.click(screen.getByRole('button', { name: 'Editar TARIFA BANCARIA' }));
   await user.clear(screen.getByLabelText('Entidade TARIFA BANCARIA'));
   await user.type(screen.getByLabelText('Entidade TARIFA BANCARIA'), 'Pedágio');
   await user.clear(screen.getByLabelText('Categoria TARIFA BANCARIA'));

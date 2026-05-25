@@ -15,6 +15,7 @@ describe('local dev auth bypass', () => {
     const access = createLocalDevAccountAccess();
 
     expect(session.token).toBe('local-dev-auth-bypass');
+    expect(session.user.id).toBe('iuser-supremo-default');
     expect(session.user.role).toBe('supremo');
     expect(session.user.permissions).toContain('finance.reconcile');
     expect(access.products.find((product) => product.product_key === 'financeiro')?.allowed).toBe(true);

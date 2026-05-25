@@ -31,8 +31,8 @@ export function createLocalDevSession(): InternalSessionData {
     token: 'local-dev-auth-bypass',
     expires_at: expiresAt,
     user: {
-      id: 'local-dev-user',
-      username: 'local.dev@prymeira.test',
+      id: 'iuser-supremo-default',
+      username: 'holand',
       display_name: 'Dev Financeiro',
       role: 'supremo',
       permissions: [...INTERNAL_PERMISSION_KEYS],

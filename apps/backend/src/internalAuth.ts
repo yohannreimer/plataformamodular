@@ -845,8 +845,8 @@ export function extractInternalBearerToken(req: Request): string | null {
 
 function buildLocalDevAuthContext(): InternalAuthContext {
   return {
-    internal_user_id: 'local-dev-user',
-    username: 'local.dev@prymeira.test',
+    internal_user_id: 'iuser-supremo-default',
+    username: 'holand',
     display_name: 'Dev Finance',
     role: 'supremo',
     permissions: [...INTERNAL_PERMISSION_KEYS],

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import type {
   FinanceAccount,
   FinanceCategory,
@@ -124,7 +124,7 @@ const modalStyle = {
   boxShadow: '0 28px 80px rgba(15, 23, 42, 0.24)',
   maxHeight: '90vh',
   overflow: 'auto',
-  width: 'min(1040px, 100%)'
+  width: 'min(1240px, 100%)'
 } as const;
 
 const fieldStyle = {
@@ -173,6 +173,7 @@ export function FinanceOfxImportModal({
   const [ofxText, setOfxText] = useState('');
   const [preview, setPreview] = useState<FinanceOfxPreview | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [expandedItemIds, setExpandedItemIds] = useState<Set<string>>(() => new Set());
   const [itemEdits, setItemEdits] = useState<Record<string, DraftItemEdit>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -187,6 +188,7 @@ export function FinanceOfxImportModal({
     setError('');
     setPreview(null);
     setSelectedIds(new Set());
+    setExpandedItemIds(new Set());
     setItemEdits({});
     setFileName(file.name);
     setFileSize(file.size);
@@ -206,6 +208,7 @@ export function FinanceOfxImportModal({
       });
       setPreview(nextPreview);
       setSelectedIds(new Set(nextPreview.items.filter(isSelectedByDefault).map((item) => item.id)));
+      setExpandedItemIds(new Set());
       setItemEdits(Object.fromEntries(nextPreview.items.map((item) => [item.id, initialEditForItem(item)])));
     } catch (previewError) {
       setError(previewError instanceof Error ? previewError.message : 'Falha ao gerar prévia OFX.');
@@ -243,6 +246,14 @@ export function FinanceOfxImportModal({
 
   const canPreview = Boolean(financialAccountId && ofxText && !loading);
   const canApprove = Boolean(preview && selectedIds.size > 0 && !loading);
+  const toggleItemExpansion = (itemId: string) => {
+    setExpandedItemIds((current) => {
+      const next = new Set(current);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  };
   const updateItemEdit = (itemId: string, changes: Partial<DraftItemEdit>) => {
     setItemEdits((current) => ({
       ...current,
@@ -336,134 +347,211 @@ export function FinanceOfxImportModal({
                         <th style={thStyle}>Sel.</th>
                         <th style={thStyle}>Descrição</th>
                         <th style={thStyle}>Decisão</th>
+                        <th style={thStyle}>Entidade</th>
                         <th style={thStyle}>Categoria</th>
                         <th style={{ ...thStyle, textAlign: 'right' }}>Valor</th>
                         <th style={{ ...thStyle, textAlign: 'right' }}>Confiança</th>
+                        <th style={{ ...thStyle, textAlign: 'right' }}>Ação</th>
                       </tr>
                     </thead>
                     <tbody>
                       {preview.items.map((item) => {
                         const selectable = isSelectable(item);
                         const edit = itemEdits[item.id] ?? initialEditForItem(item);
+                        const expanded = expandedItemIds.has(item.id);
                         const direction = itemDirection(item);
                         const rowCategories = categories.filter((category) => category.kind === (item.line.amount_cents >= 0 ? 'income' : 'expense'));
                         const entityListId = `ofx-entities-${item.id}`;
                         const categoryListId = `ofx-categories-${item.id}`;
                         const costCenterListId = `ofx-cost-centers-${item.id}`;
                         return (
-                          <tr key={item.id} style={{ borderTop: '1px solid #edf2f7', color: selectable ? '#0f172a' : '#64748b' }}>
-                            <td style={tdStyle}>
-                              <input
-                                aria-label={`Aprovar ${item.line.description}`}
-                                type="checkbox"
-                                checked={selectedIds.has(item.id)}
-                                disabled={!selectable}
-                                onChange={(event) => {
-                                  setSelectedIds((current) => {
-                                    const next = new Set(current);
-                                    if (event.target.checked) next.add(item.id);
-                                    else next.delete(item.id);
-                                    return next;
-                                  });
-                                }}
-                              />
-                            </td>
-                            <td style={{ ...tdStyle, minWidth: 220 }}>
-                              <strong style={{ display: 'block', fontSize: 13 }}>{item.line.description}</strong>
-                              <small style={{ color: item.line.amount_cents >= 0 ? '#047857' : '#b45309', display: 'block', fontWeight: 800, marginTop: 3 }}>
-                                {direction} · {item.blocking_reason ?? item.reasons[0]?.label ?? 'Sem observação'}
-                              </small>
-                              {selectable ? (
-                                <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(2, minmax(150px, 1fr))', marginTop: 10 }}>
-                                  <datalist id={entityListId}>
-                                    {entities.map((entity) => (
-                                      <option key={entity.id} value={entity.trade_name ?? entity.legal_name} />
-                                    ))}
-                                  </datalist>
-                                  <datalist id={categoryListId}>
-                                    {rowCategories.map((category) => (
-                                      <option key={category.id} value={category.name} />
-                                    ))}
-                                  </datalist>
-                                  <datalist id={costCenterListId}>
-                                    {costCenters.map((costCenter) => (
-                                      <option key={costCenter.id} value={costCenter.name} />
-                                    ))}
-                                  </datalist>
-                                  <input
-                                    aria-label={`Entidade ${item.line.description}`}
-                                    list={entityListId}
-                                    placeholder={item.line.amount_cents >= 0 ? 'Cliente ou nova entidade' : 'Fornecedor ou nova entidade'}
-                                    value={edit.financial_entity_name}
-                                    onChange={(event) => {
-                                      const name = event.target.value;
-                                      const match = exactNameMatch(entities, name, (entity) => entity.trade_name ?? entity.legal_name);
-                                      updateItemEdit(item.id, {
-                                        financial_entity_id: match?.id ?? '',
-                                        financial_entity_name: name,
-                                        reference_name: edit.reference_name || name
-                                      });
-                                      setSelectedIds((current) => new Set(current).add(item.id));
+                          <Fragment key={item.id}>
+                            <tr style={{ background: expanded ? '#fbfdff' : '#ffffff', borderTop: '1px solid #edf2f7', color: selectable ? '#0f172a' : '#64748b' }}>
+                              <td style={tdStyle}>
+                                <input
+                                  aria-label={`Aprovar ${item.line.description}`}
+                                  type="checkbox"
+                                  checked={selectedIds.has(item.id)}
+                                  disabled={!selectable}
+                                  style={{ cursor: selectable ? 'pointer' : 'not-allowed', height: 18, width: 18 }}
+                                  onChange={(event) => {
+                                    setSelectedIds((current) => {
+                                      const next = new Set(current);
+                                      if (event.target.checked) next.add(item.id);
+                                      else next.delete(item.id);
+                                      return next;
+                                    });
+                                  }}
+                                />
+                              </td>
+                              <td style={{ ...tdStyle, minWidth: 260 }}>
+                                <button
+                                  type="button"
+                                  disabled={!selectable}
+                                  onClick={() => toggleItemExpansion(item.id)}
+                                  style={{
+                                    background: 'transparent',
+                                    border: 0,
+                                    color: selectable ? '#475569' : '#94a3b8',
+                                    cursor: selectable ? 'pointer' : 'not-allowed',
+                                    display: 'block',
+                                    font: 'inherit',
+                                    padding: 0,
+                                    textAlign: 'left',
+                                    width: '100%'
+                                  }}
+                                >
+                                  <strong style={{ color: selectable ? '#334155' : '#64748b', display: 'block', fontSize: 13 }}>
+                                    {item.line.description}
+                                  </strong>
+                                  <small style={{ color: item.line.amount_cents >= 0 ? '#047857' : '#b45309', display: 'block', fontWeight: 800, marginTop: 3 }}>
+                                    {direction} · {item.blocking_reason ?? item.reasons[0]?.label ?? 'Sem observação'}
+                                  </small>
+                                </button>
+                              </td>
+                              <td style={tdStyle}>{decisionLabel(item)}</td>
+                              <td style={tdStyle}>{edit.financial_entity_name || item.proposed.financial_entity_name || 'Sem entidade'}</td>
+                              <td style={tdStyle}>{edit.financial_category_name || item.proposed.financial_category_name || 'Sem categoria'}</td>
+                              <td style={{ ...tdStyle, textAlign: 'right' }}><FinanceMono>{formatCurrency(item.line.amount_cents)}</FinanceMono></td>
+                              <td style={{ ...tdStyle, color: selectable ? '#047857' : '#92400e', fontWeight: 800, textAlign: 'right' }}>{Math.round(item.confidence_score * 100)}%</td>
+                              <td style={{ ...tdStyle, textAlign: 'right' }}>
+                                {selectable ? (
+                                  <button
+                                    type="button"
+                                    aria-expanded={expanded}
+                                    aria-label={`Editar ${item.line.description}`}
+                                    onClick={() => toggleItemExpansion(item.id)}
+                                    style={{
+                                      background: expanded ? '#e0f2fe' : '#ffffff',
+                                      border: '1px solid #cbd5e1',
+                                      borderRadius: 8,
+                                      color: '#0f172a',
+                                      cursor: 'pointer',
+                                      fontWeight: 800,
+                                      minHeight: 32,
+                                      padding: '0 12px'
                                     }}
-                                    style={inlineControlStyle}
-                                  />
-                                  <input
-                                    aria-label={`Categoria ${item.line.description}`}
-                                    list={categoryListId}
-                                    placeholder="Categoria ou nova categoria"
-                                    value={edit.financial_category_name}
-                                    onChange={(event) => {
-                                      const name = event.target.value;
-                                      const match = exactNameMatch(rowCategories, name, (category) => category.name);
-                                      updateItemEdit(item.id, {
-                                        financial_category_id: match?.id ?? '',
-                                        financial_category_name: name
-                                      });
-                                      setSelectedIds((current) => new Set(current).add(item.id));
-                                    }}
-                                    style={inlineControlStyle}
-                                  />
-                                  <input
-                                    aria-label={`Centro de custo ${item.line.description}`}
-                                    list={costCenterListId}
-                                    placeholder="Centro ou novo centro"
-                                    value={edit.financial_cost_center_name}
-                                    onChange={(event) => {
-                                      const name = event.target.value;
-                                      const match = exactNameMatch(costCenters, name, (costCenter) => costCenter.name);
-                                      updateItemEdit(item.id, {
-                                        financial_cost_center_id: match?.id ?? '',
-                                        financial_cost_center_name: name
-                                      });
-                                      setSelectedIds((current) => new Set(current).add(item.id));
-                                    }}
-                                    style={inlineControlStyle}
-                                  />
-                                  <select aria-label={`Forma de pagamento ${item.line.description}`} value={edit.financial_payment_method_id} onChange={(event) => updateItemEdit(item.id, { financial_payment_method_id: event.target.value })} style={inlineControlStyle}>
-                                    <option value="">Sem forma</option>
-                                    {paymentMethods.map((paymentMethod) => (
-                                      <option key={paymentMethod.id} value={paymentMethod.id}>{paymentMethod.name}</option>
-                                    ))}
-                                  </select>
-                                  <input
-                                    aria-label={`Referência ${item.line.description}`}
-                                    value={edit.reference_name}
-                                    onChange={(event) => updateItemEdit(item.id, { reference_name: event.target.value })}
-                                    placeholder="Nome limpo do lançamento"
-                                    style={{ ...inlineControlStyle, gridColumn: '1 / -1' }}
-                                  />
-                                  <label style={{ alignItems: 'center', color: '#475569', display: 'flex', fontSize: 11, fontWeight: 700, gap: 6 }}>
-                                    <input aria-label={`Salvar memória ${item.line.description}`} type="checkbox" checked={edit.save_memory} onChange={(event) => updateItemEdit(item.id, { save_memory: event.target.checked })} />
-                                    Salvar memória
-                                  </label>
-                                </div>
-                              ) : null}
-                            </td>
-                            <td style={tdStyle}>{decisionLabel(item)}</td>
-                            <td style={tdStyle}>{edit.financial_category_name || item.proposed.financial_category_name || 'Sem categoria'}</td>
-                            <td style={{ ...tdStyle, textAlign: 'right' }}><FinanceMono>{formatCurrency(item.line.amount_cents)}</FinanceMono></td>
-                            <td style={{ ...tdStyle, color: selectable ? '#047857' : '#92400e', fontWeight: 800, textAlign: 'right' }}>{Math.round(item.confidence_score * 100)}%</td>
-                          </tr>
+                                  >
+                                    {expanded ? 'Fechar' : 'Editar'}
+                                  </button>
+                                ) : (
+                                  <span style={{ color: '#94a3b8', fontWeight: 700 }}>Bloqueada</span>
+                                )}
+                              </td>
+                            </tr>
+                            {selectable && expanded ? (
+                              <tr style={{ background: '#fbfdff', borderTop: '1px solid #e2e8f0' }}>
+                                <td aria-hidden="true" style={tdStyle} />
+                                <td colSpan={7} style={{ padding: '14px 10px 16px' }}>
+                                  <div style={{ border: '1px solid #dbe3ef', borderRadius: 8, display: 'grid', gap: 12, padding: 14 }}>
+                                    <div style={{ color: '#64748b', display: 'flex', flexWrap: 'wrap', fontSize: 11, fontWeight: 800, gap: 8 }}>
+                                      <span>{direction}</span>
+                                      <span>Valor <FinanceMono>{formatCurrency(item.line.amount_cents)}</FinanceMono></span>
+                                      <span>Texto original: {item.line.description}</span>
+                                    </div>
+                                    <datalist id={entityListId}>
+                                      {entities.map((entity) => (
+                                        <option key={entity.id} value={entity.trade_name ?? entity.legal_name} />
+                                      ))}
+                                    </datalist>
+                                    <datalist id={categoryListId}>
+                                      {rowCategories.map((category) => (
+                                        <option key={category.id} value={category.name} />
+                                      ))}
+                                    </datalist>
+                                    <datalist id={costCenterListId}>
+                                      {costCenters.map((costCenter) => (
+                                        <option key={costCenter.id} value={costCenter.name} />
+                                      ))}
+                                    </datalist>
+                                    <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(3, minmax(170px, 1fr))' }}>
+                                      <label style={editFieldStyle}>
+                                        Entidade
+                                        <input
+                                          aria-label={`Entidade ${item.line.description}`}
+                                          list={entityListId}
+                                          placeholder={item.line.amount_cents >= 0 ? 'Cliente ou nova entidade' : 'Fornecedor ou nova entidade'}
+                                          value={edit.financial_entity_name}
+                                          onChange={(event) => {
+                                            const name = event.target.value;
+                                            const match = exactNameMatch(entities, name, (entity) => entity.trade_name ?? entity.legal_name);
+                                            updateItemEdit(item.id, {
+                                              financial_entity_id: match?.id ?? '',
+                                              financial_entity_name: name,
+                                              reference_name: edit.reference_name || name
+                                            });
+                                            setSelectedIds((current) => new Set(current).add(item.id));
+                                          }}
+                                          style={inlineControlStyle}
+                                        />
+                                      </label>
+                                      <label style={editFieldStyle}>
+                                        Categoria
+                                        <input
+                                          aria-label={`Categoria ${item.line.description}`}
+                                          list={categoryListId}
+                                          placeholder="Categoria ou nova categoria"
+                                          value={edit.financial_category_name}
+                                          onChange={(event) => {
+                                            const name = event.target.value;
+                                            const match = exactNameMatch(rowCategories, name, (category) => category.name);
+                                            updateItemEdit(item.id, {
+                                              financial_category_id: match?.id ?? '',
+                                              financial_category_name: name
+                                            });
+                                            setSelectedIds((current) => new Set(current).add(item.id));
+                                          }}
+                                          style={inlineControlStyle}
+                                        />
+                                      </label>
+                                      <label style={editFieldStyle}>
+                                        Centro de custo
+                                        <input
+                                          aria-label={`Centro de custo ${item.line.description}`}
+                                          list={costCenterListId}
+                                          placeholder="Centro ou novo centro"
+                                          value={edit.financial_cost_center_name}
+                                          onChange={(event) => {
+                                            const name = event.target.value;
+                                            const match = exactNameMatch(costCenters, name, (costCenter) => costCenter.name);
+                                            updateItemEdit(item.id, {
+                                              financial_cost_center_id: match?.id ?? '',
+                                              financial_cost_center_name: name
+                                            });
+                                            setSelectedIds((current) => new Set(current).add(item.id));
+                                          }}
+                                          style={inlineControlStyle}
+                                        />
+                                      </label>
+                                      <label style={editFieldStyle}>
+                                        Forma
+                                        <select aria-label={`Forma de pagamento ${item.line.description}`} value={edit.financial_payment_method_id} onChange={(event) => updateItemEdit(item.id, { financial_payment_method_id: event.target.value })} style={inlineControlStyle}>
+                                          <option value="">Sem forma</option>
+                                          {paymentMethods.map((paymentMethod) => (
+                                            <option key={paymentMethod.id} value={paymentMethod.id}>{paymentMethod.name}</option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                      <label style={{ ...editFieldStyle, gridColumn: 'span 2' }}>
+                                        Nome de referência
+                                        <input
+                                          aria-label={`Referência ${item.line.description}`}
+                                          value={edit.reference_name}
+                                          onChange={(event) => updateItemEdit(item.id, { reference_name: event.target.value })}
+                                          placeholder="Nome limpo do lançamento"
+                                          style={inlineControlStyle}
+                                        />
+                                      </label>
+                                    </div>
+                                    <label style={{ alignItems: 'center', color: '#475569', display: 'flex', fontSize: 12, fontWeight: 800, gap: 8 }}>
+                                      <input aria-label={`Salvar memória ${item.line.description}`} type="checkbox" checked={edit.save_memory} onChange={(event) => updateItemEdit(item.id, { save_memory: event.target.checked })} />
+                                      Salvar como memória para próximas conciliações parecidas
+                                    </label>
+                                  </div>
+                                </td>
+                              </tr>
+                            ) : null}
+                          </Fragment>
                         );
                       })}
                     </tbody>
@@ -508,13 +596,21 @@ const tdStyle = {
   verticalAlign: 'middle'
 } as const;
 
+const editFieldStyle = {
+  color: '#475569',
+  display: 'grid',
+  fontSize: 12,
+  fontWeight: 800,
+  gap: 6
+} as const;
+
 const inlineControlStyle = {
   background: '#ffffff',
   border: '1px solid #cbd5e1',
   borderRadius: 6,
   color: '#0f172a',
-  fontSize: 11,
-  minHeight: 30,
-  padding: '0 8px',
+  fontSize: 13,
+  minHeight: 38,
+  padding: '0 10px',
   width: '100%'
 } as const;

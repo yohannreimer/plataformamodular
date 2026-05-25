@@ -367,7 +367,7 @@ function InternalApp() {
 
   useEffect(() => {
     if (localAuthBypass) {
-      bootstrappedClerkUserIdRef.current = 'local-dev-user';
+      bootstrappedClerkUserIdRef.current = 'iuser-supremo-default';
       window.sessionStorage.setItem(INTERNAL_TAB_INITIALIZED_KEY, '1');
       setLoadingSession(false);
       return;
