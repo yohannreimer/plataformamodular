@@ -653,6 +653,7 @@ export function initDb() {
       company_id text,
       import_type text not null,
       source_file_name text not null,
+      source_file_hash text,
       source_file_mime_type text,
       source_file_size_bytes integer not null default 0,
       status text not null,
@@ -680,6 +681,7 @@ export function initDb() {
       posted_at text,
       amount_cents integer not null,
       description text not null,
+      dedupe_hash text,
       reference_code text,
       balance_cents integer,
       source text not null default 'bank_import',
@@ -714,6 +716,57 @@ export function initDb() {
       foreign key(company_id) references company(id) on delete cascade,
       foreign key(organization_id, financial_bank_statement_entry_id) references financial_bank_statement_entry(organization_id, id) on delete cascade,
       foreign key(organization_id, financial_transaction_id) references financial_transaction(organization_id, id) on delete cascade
+    );
+
+    create table if not exists financial_reconciliation_memory (
+      id text primary key,
+      organization_id text not null,
+      company_id text,
+      financial_account_id text not null,
+      normalized_pattern text not null,
+      direction text not null check(direction in ('inflow', 'outflow')),
+      financial_entity_id text,
+      financial_category_id text,
+      financial_cost_center_id text,
+      financial_payment_method_id text,
+      usage_count integer not null default 1,
+      confidence_score real not null default 0.7,
+      last_approved_at text not null,
+      created_at text not null,
+      updated_at text not null,
+      unique(organization_id, financial_account_id, normalized_pattern, direction),
+      unique(organization_id, id),
+      foreign key(organization_id) references organization(id) on delete cascade,
+      foreign key(company_id) references company(id) on delete cascade,
+      foreign key(organization_id, financial_account_id) references financial_account(organization_id, id) on delete cascade,
+      foreign key(organization_id, financial_entity_id) references financial_entity(organization_id, id) on delete restrict,
+      foreign key(organization_id, financial_category_id) references financial_category(organization_id, id) on delete restrict,
+      foreign key(organization_id, financial_cost_center_id) references financial_cost_center(organization_id, id) on delete restrict,
+      foreign key(organization_id, financial_payment_method_id) references financial_payment_method(organization_id, id) on delete restrict
+    );
+
+    create table if not exists financial_reconciliation_batch (
+      id text primary key,
+      organization_id text not null,
+      company_id text,
+      financial_import_job_id text not null,
+      financial_account_id text not null,
+      source_file_name text not null,
+      source_file_hash text not null,
+      approved_by text,
+      approved_at text not null,
+      total_rows integer not null,
+      approved_rows integer not null,
+      skipped_rows integer not null,
+      inflow_cents integer not null,
+      outflow_cents integer not null,
+      decision_summary_json text not null,
+      created_at text not null,
+      unique(organization_id, id),
+      foreign key(organization_id) references organization(id) on delete cascade,
+      foreign key(company_id) references company(id) on delete cascade,
+      foreign key(organization_id, financial_import_job_id) references financial_import_job(organization_id, id) on delete restrict,
+      foreign key(organization_id, financial_account_id) references financial_account(organization_id, id) on delete restrict
     );
 
     create table if not exists financial_debt (
@@ -1509,11 +1562,13 @@ export function initDb() {
     'organization_id',
     'organization_id text references organization(id) on delete cascade'
   );
+  ensureColumn('financial_import_job', 'source_file_hash', 'source_file_hash text');
   ensureColumn(
     'financial_bank_statement_entry',
     'organization_id',
     'organization_id text references organization(id) on delete cascade'
   );
+  ensureColumn('financial_bank_statement_entry', 'dedupe_hash', 'dedupe_hash text');
   ensureColumn(
     'financial_reconciliation_match',
     'organization_id',
@@ -2531,8 +2586,12 @@ export function initDb() {
     create index if not exists idx_financial_import_job_org_status on financial_import_job(organization_id, status, created_at desc);
     create index if not exists idx_financial_bank_statement_entry_org_account_date
       on financial_bank_statement_entry(organization_id, financial_account_id, statement_date);
+    create index if not exists idx_financial_statement_dedupe
+      on financial_bank_statement_entry(organization_id, financial_account_id, dedupe_hash);
     create index if not exists idx_financial_reconciliation_match_org_entry
       on financial_reconciliation_match(organization_id, financial_bank_statement_entry_id, financial_transaction_id);
+    create index if not exists idx_financial_reconciliation_batch_job
+      on financial_reconciliation_batch(organization_id, financial_import_job_id);
     create index if not exists idx_financial_debt_org_status_due on financial_debt(organization_id, status, due_date);
     create index if not exists idx_financial_debt_org_payable on financial_debt(organization_id, financial_payable_id);
     create index if not exists idx_financial_debt_org_receivable on financial_debt(organization_id, financial_receivable_id);

@@ -568,6 +568,42 @@ test('initDb cria schema financeiro v1', () => {
   }
 });
 
+test('initDb cria estruturas para conciliacao OFX em lote e memoria', async () => {
+  const dbPath = assignTestDbPath('finance-ofx-reconciliation-schema');
+  cleanupDbFiles(dbPath);
+  resetDbConnection();
+
+  try {
+    initDb();
+
+    const importJobColumns = db.prepare('pragma table_info(financial_import_job)').all() as Array<{ name: string }>;
+    assert.ok(importJobColumns.some((column) => column.name === 'source_file_hash'), 'financial_import_job.source_file_hash ausente');
+
+    const statementColumns = db.prepare('pragma table_info(financial_bank_statement_entry)').all() as Array<{ name: string }>;
+    assert.ok(statementColumns.some((column) => column.name === 'dedupe_hash'), 'financial_bank_statement_entry.dedupe_hash ausente');
+
+    const memoryTable = db.prepare(
+      "select name from sqlite_master where type = 'table' and name = ?"
+    ).get('financial_reconciliation_memory') as { name: string } | undefined;
+    assert.ok(memoryTable, 'financial_reconciliation_memory ausente');
+
+    const batchTable = db.prepare(
+      "select name from sqlite_master where type = 'table' and name = ?"
+    ).get('financial_reconciliation_batch') as { name: string } | undefined;
+    assert.ok(batchTable, 'financial_reconciliation_batch ausente');
+
+    assertCompositeUniqueIndex('financial_reconciliation_memory', [
+      'organization_id',
+      'financial_account_id',
+      'normalized_pattern',
+      'direction'
+    ]);
+  } finally {
+    db.close();
+    cleanupDbFiles(dbPath);
+  }
+});
+
 test('initDb cria tabela de interações do Whisper Flow financeiro', () => {
   const dbPath = assignTestDbPath('finance-whisper-schema');
   cleanupDbFiles(dbPath);
