@@ -50,12 +50,22 @@ function decodeOfxEntities(value: string) {
     const codePoint = normalizedBody.startsWith('#x')
       ? Number.parseInt(normalizedBody.slice(2), 16)
       : Number.parseInt(normalizedBody.slice(1), 10);
-    if (!Number.isInteger(codePoint) || codePoint < 0 || codePoint > 0x10ffff) {
+    if (!isXmlScalarCodePoint(codePoint)) {
       return entity;
     }
 
     return String.fromCodePoint(codePoint);
   });
+}
+
+function isXmlScalarCodePoint(codePoint: number) {
+  if (!Number.isInteger(codePoint) || codePoint > 0x10ffff) {
+    return false;
+  }
+  if (codePoint < 0x20 && codePoint !== 0x09 && codePoint !== 0x0a && codePoint !== 0x0d) {
+    return false;
+  }
+  return codePoint < 0xd800 || codePoint > 0xdfff;
 }
 
 function parseOfxDate(value: string | null) {
@@ -96,7 +106,7 @@ function parseOfxAmountToCents(value: string | null) {
   const [wholePart, decimalPart = ''] = unsignedValue.split('.');
   const centDigits = (decimalPart + '00').slice(0, 2);
   let absoluteCents = BigInt(wholePart) * 100n + BigInt(centDigits);
-  if (decimalPart.length > 2 && Number.parseInt(decimalPart[2], 10) >= 5) {
+  if (shouldRoundHalfAwayFromZeroToCents(decimalPart)) {
     absoluteCents += 1n;
   }
 
@@ -105,6 +115,10 @@ function parseOfxAmountToCents(value: string | null) {
     throw new Error('Linha OFX sem valor válido.');
   }
   return Number(cents);
+}
+
+function shouldRoundHalfAwayFromZeroToCents(decimalPart: string) {
+  return decimalPart.length > 2 && Number.parseInt(decimalPart[2], 10) >= 5;
 }
 
 export function buildStatementDedupeHash(input: {
@@ -132,34 +146,39 @@ export function parseFinanceOfx(input: ParseFinanceOfxInput): ParseFinanceOfxRes
   }
 
   const lines = blocks.map((block, index): FinanceOfxLineDto => {
-    const statementDate = parseOfxDate(readTag(block, 'DTPOSTED'));
-    const amountCents = parseOfxAmountToCents(readTag(block, 'TRNAMT'));
-    const memo = readTag(block, 'MEMO');
-    const name = readTag(block, 'NAME');
-    const description = (memo ?? name ?? '').trim();
-    if (!description) {
-      throw new Error('Linha OFX sem descrição válida.');
-    }
-    const normalizedDescription = normalizeReconciliationDescription(description);
-    const referenceCode = readTag(block, 'FITID');
+    try {
+      const statementDate = parseOfxDate(readTag(block, 'DTPOSTED'));
+      const amountCents = parseOfxAmountToCents(readTag(block, 'TRNAMT'));
+      const memo = readTag(block, 'MEMO');
+      const name = readTag(block, 'NAME');
+      const description = (memo ?? name ?? '').trim();
+      if (!description) {
+        throw new Error('Linha OFX sem descrição válida.');
+      }
+      const normalizedDescription = normalizeReconciliationDescription(description);
+      const referenceCode = readTag(block, 'FITID');
 
-    return {
-      id: `ofx-line-${index + 1}`,
-      statement_date: statementDate,
-      posted_at: statementDate,
-      amount_cents: amountCents,
-      description,
-      normalized_description: normalizedDescription,
-      reference_code: referenceCode,
-      balance_cents: null,
-      dedupe_hash: buildStatementDedupeHash({
-        financial_account_id: input.financial_account_id,
+      return {
+        id: `ofx-line-${index + 1}`,
         statement_date: statementDate,
+        posted_at: statementDate,
         amount_cents: amountCents,
+        description,
+        normalized_description: normalizedDescription,
         reference_code: referenceCode,
-        normalized_description: normalizedDescription
-      })
-    };
+        balance_cents: null,
+        dedupe_hash: buildStatementDedupeHash({
+          financial_account_id: input.financial_account_id,
+          statement_date: statementDate,
+          amount_cents: amountCents,
+          reference_code: referenceCode,
+          normalized_description: normalizedDescription
+        })
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Linha OFX ${index + 1}: ${message}`);
+    }
   });
 
   return {

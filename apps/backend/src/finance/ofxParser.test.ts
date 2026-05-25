@@ -124,6 +124,57 @@ test('parseFinanceOfx rejeita valores OFX inválidos', () => {
   }
 });
 
+test('parseFinanceOfx inclui contexto da linha OFX em erros de bloco', () => {
+  assert.throws(
+    () => parseFinanceOfx({
+      organization_id: 'org-holand',
+      financial_account_id: 'acc-1',
+      source_file_name: 'linha-invalida.ofx',
+      ofx_text: `
+<OFX>
+<BANKTRANLIST>
+<STMTTRN>
+<DTPOSTED>20260524
+<TRNAMT>10.00
+<FITID>ok
+<MEMO>Movimento válido
+</STMTTRN>
+<STMTTRN>
+<DTPOSTED>20260524
+<TRNAMT>123abc
+<FITID>bad-amount
+<MEMO>Movimento inválido
+</STMTTRN>
+</BANKTRANLIST>
+</OFX>
+`
+    }),
+    /Linha OFX 2: Linha OFX sem valor válido/
+  );
+});
+
+test('parseFinanceOfx preserva entidades numéricas XML inválidas em descrições OFX', () => {
+  const parsed = parseFinanceOfx({
+    organization_id: 'org-holand',
+    financial_account_id: 'acc-1',
+    source_file_name: 'entidades-invalidas.ofx',
+    ofx_text: `
+<OFX>
+<BANKTRANLIST>
+<STMTTRN>
+<DTPOSTED>20260524
+<TRNAMT>10.00
+<FITID>invalid-entities
+<MEMO>Controle &#1; e &#xD800;
+</STMTTRN>
+</BANKTRANLIST>
+</OFX>
+`
+  });
+
+  assert.equal(parsed.lines[0].description, 'Controle &#1; e &#xD800;');
+});
+
 test('parseFinanceOfx converte valores OFX para centavos com arredondamento decimal explícito', () => {
   const cases: Array<[string, number]> = [
     ['-98.50', -9850],
