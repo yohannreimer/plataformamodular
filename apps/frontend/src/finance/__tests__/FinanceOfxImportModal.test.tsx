@@ -287,6 +287,62 @@ test('FinanceOfxImportModal lets reviewers edit financial fields before approval
   });
 });
 
+test('FinanceOfxImportModal lets review rows be selected and edited even when confidence band is blocked', async () => {
+  const user = userEvent.setup();
+  const reviewOnlyPreview: FinanceOfxPreview = {
+    ...preview,
+    summary: {
+      ...preview.summary,
+      ready_count: 0,
+      review_count: 1,
+      blocked_count: 0
+    },
+    items: [{
+      ...preview.items[0],
+      decision_type: 'needs_review',
+      confidence_band: 'blocked',
+      blocking_reason: 'Revise os campos financeiros antes de aprovar.',
+      proposed: {
+        ...preview.items[0].proposed,
+        financial_entity_id: null,
+        financial_entity_name: null,
+        financial_category_id: null,
+        financial_category_name: null,
+        financial_cost_center_id: null,
+        financial_cost_center_name: null
+      }
+    }]
+  };
+  const { props } = renderModal({ onPreview: vi.fn().mockResolvedValue(reviewOnlyPreview) });
+  const ofxText = '<OFX><BANKTRANLIST><STMTTRN><DTPOSTED>20260524<TRNAMT>-5.70<MEMO>PISTA 3</STMTTRN></BANKTRANLIST></OFX>';
+
+  await user.selectOptions(screen.getByLabelText('Conta bancária'), 'acc-1');
+  await user.upload(screen.getByLabelText('Arquivo OFX'), new File([ofxText], 'pista.ofx', { type: 'application/x-ofx' }));
+  await user.click(screen.getByRole('button', { name: 'Gerar prévia' }));
+
+  await screen.findByText('TARIFA BANCARIA');
+  expect(screen.getByRole('checkbox', { name: 'Aprovar TARIFA BANCARIA' })).not.toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Editar TARIFA BANCARIA' })).toBeEnabled();
+  expect(screen.queryByText('Bloqueada')).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole('button', { name: 'Editar TARIFA BANCARIA' }));
+  await user.type(screen.getByLabelText('Entidade TARIFA BANCARIA'), 'Pedágio');
+  await user.type(screen.getByLabelText('Categoria TARIFA BANCARIA'), 'Pedágio');
+  await user.click(screen.getByRole('button', { name: 'Aprovar lote' }));
+
+  await waitFor(() => {
+    expect(props.onApprove).toHaveBeenCalledWith(expect.objectContaining({
+      approved_items: [expect.objectContaining({
+        draft_item_id: 'ofx-line-1',
+        approved: true,
+        decision_type: 'new_transaction',
+        financial_entity_name: 'Pedágio',
+        financial_category_name: 'Pedágio'
+      })]
+    }));
+  });
+});
+
 test('FinanceOfxImportModal sends typed names for inline catalog creation', async () => {
   const user = userEvent.setup();
   const { props } = renderModal({ entities: [], categories: [], costCenters: [] });

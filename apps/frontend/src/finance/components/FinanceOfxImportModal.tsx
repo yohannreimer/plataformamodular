@@ -54,7 +54,7 @@ function decisionLabel(item: FinanceReconciliationDraftItem) {
 }
 
 function isSelectable(item: FinanceReconciliationDraftItem) {
-  return item.confidence_band !== 'blocked' && item.decision_type !== 'duplicate' && item.decision_type !== 'invalid';
+  return item.decision_type !== 'duplicate' && item.decision_type !== 'invalid';
 }
 
 function isSelectedByDefault(item: FinanceReconciliationDraftItem) {
