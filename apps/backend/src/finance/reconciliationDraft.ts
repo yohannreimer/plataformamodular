@@ -45,6 +45,7 @@ type CandidateScore = {
   score: number;
   reasons: FinanceReconciliationSuggestionReasonDto[];
   isPartial: boolean;
+  hasTextEvidence: boolean;
 };
 
 type ScoredCandidate<T> = CandidateScore & {
@@ -59,6 +60,18 @@ const WEAK_MEMORY_BLOCKING_REASON = 'Memória financeira com confiança insufici
 const SETTLEMENT_STATUSES = new Set(['open', 'partial', 'overdue']);
 const MIN_MATCH_SCORE = 0.6;
 const AMBIGUOUS_SCORE_GAP = 0.04;
+const GENERIC_MEMORY_TOKENS = new Set([
+  'pix',
+  'pagto',
+  'pagamento',
+  'pago',
+  'ted',
+  'doc',
+  'transf',
+  'transferencia',
+  'recebimento',
+  'recebido'
+]);
 
 export function confidenceBand(score: number): FinanceReconciliationDraftItemDto['confidence_band'] {
   if (score >= 0.95) return 'auto';
@@ -233,7 +246,7 @@ function selectCandidate<T>(candidates: Array<ScoredCandidate<T>>): {
   ambiguous: boolean;
 } {
   const plausible = candidates
-    .filter((candidate) => candidate.score >= MIN_MATCH_SCORE)
+    .filter((candidate) => candidate.score >= MIN_MATCH_SCORE && candidate.hasTextEvidence)
     .sort((left, right) => right.score - left.score);
   const [best, second] = plausible;
   if (!best) {
@@ -359,12 +372,14 @@ function scoreFinancialCandidate(input: {
     input.categoryName,
     input.costCenterName
   ]);
+  let hasTextEvidence = textScore > 0;
   if (textScore > 0) {
     score += Math.min(0.22, textScore * 0.22);
     reasons.push({ label: 'Descrição parecida', detail: `${Math.round(textScore * 100)}% de sinal textual.`, tone: 'positive' });
   }
 
   if (input.entityName && normalizedTextIncludes(input.line.normalized_description, input.entityName)) {
+    hasTextEvidence = true;
     score += 0.12;
     reasons.push({ label: 'Entidade encontrada', detail: input.entityName, tone: 'positive' });
   }
@@ -378,7 +393,8 @@ function scoreFinancialCandidate(input: {
   return {
     score: Number(cappedScore.toFixed(2)),
     reasons,
-    isPartial: input.isPartial
+    isPartial: input.isPartial,
+    hasTextEvidence
   };
 }
 
@@ -425,19 +441,44 @@ function selectMemory(
   direction: ReconciliationDirection,
   memories: FinanceReconciliationMemoryCandidate[]
 ) {
+  const lineTokens = reconciliationTokens(line.normalized_description);
   return memories
     .filter((candidate) => (
       candidate.direction === direction
-      && candidate.normalized_pattern.length > 0
-      && line.normalized_description.includes(candidate.normalized_pattern)
+      && isMeaningfulMemoryPattern(candidate)
+      && tokenSequenceIncludes(lineTokens, reconciliationTokens(candidate.normalized_pattern))
     ))
     .sort((left, right) => {
-      const specificity = right.normalized_pattern.length - left.normalized_pattern.length;
+      const specificity = usefulMemoryTokens(right).length - usefulMemoryTokens(left).length;
       if (specificity !== 0) return specificity;
+      const patternLength = reconciliationTokens(right.normalized_pattern).length - reconciliationTokens(left.normalized_pattern).length;
+      if (patternLength !== 0) return patternLength;
       const confidence = right.confidence_score - left.confidence_score;
       if (confidence !== 0) return confidence;
       return right.usage_count - left.usage_count;
     })[0] ?? null;
+}
+
+function isMeaningfulMemoryPattern(memory: FinanceReconciliationMemoryCandidate) {
+  const usefulTokens = usefulMemoryTokens(memory);
+  if (usefulTokens.length >= 2) return true;
+  if (usefulTokens.length !== 1 || usefulTokens[0].length < 5) return false;
+  return memory.confidence_score >= 0.8 && memory.usage_count >= 2;
+}
+
+function usefulMemoryTokens(memory: Pick<FinanceReconciliationMemoryCandidate, 'normalized_pattern'>) {
+  return reconciliationTokens(memory.normalized_pattern)
+    .filter((token) => !GENERIC_MEMORY_TOKENS.has(token));
+}
+
+function tokenSequenceIncludes(lineTokens: string[], patternTokens: string[]) {
+  if (patternTokens.length === 0 || patternTokens.length > lineTokens.length) return false;
+  for (let start = 0; start <= lineTokens.length - patternTokens.length; start += 1) {
+    if (patternTokens.every((token, index) => lineTokens[start + index] === token)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function proposedFromMemory(

@@ -215,6 +215,65 @@ test('draft não promove match por valor exato sem evidência útil', () => {
   assert.equal(items[0].confidence_band, 'blocked');
 });
 
+test('draft não seleciona payable por valor e data sem texto ou entidade', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [ofxLineFixture({
+      description: 'Tarifa avulsa banco',
+      normalized_description: 'tarifa avulsa banco',
+      statement_date: '2026-05-24',
+      posted_at: '2026-05-24',
+      amount_cents: -9850
+    })],
+    payables: [payableFixture({
+      id: 'pay-same-day-unrelated',
+      description: 'Despesa sem relação',
+      due_date: '2026-05-24',
+      financial_entity_name: 'Fornecedor Distante',
+      financial_account_id: null,
+      amount_cents: 9850,
+      paid_amount_cents: 0
+    })],
+    receivables: [],
+    transactions: [],
+    memories: [],
+    duplicateHashes: new Set()
+  });
+
+  assert.equal(items[0].decision_type, 'needs_review');
+  assert.equal(items[0].target.payable_id, undefined);
+});
+
+test('draft não seleciona ledger por valor e data sem texto ou entidade', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [ofxLineFixture({
+      description: 'Tarifa avulsa banco',
+      normalized_description: 'tarifa avulsa banco',
+      statement_date: '2026-05-24',
+      posted_at: '2026-05-24',
+      amount_cents: -9850
+    })],
+    payables: [],
+    receivables: [],
+    transactions: [transactionFixture({
+      id: 'txn-same-day-unrelated',
+      note: 'Lançamento sem relação',
+      due_date: '2026-05-24',
+      settlement_date: null,
+      competence_date: null,
+      financial_entity_name: 'Fornecedor Distante',
+      financial_account_id: null,
+      amount_cents: 9850
+    })],
+    memories: [],
+    duplicateHashes: new Set()
+  });
+
+  assert.equal(items[0].decision_type, 'needs_review');
+  assert.equal(items[0].target.financial_transaction_id, undefined);
+});
+
 test('draft bloqueia ambiguidade entre títulos do mesmo tipo', () => {
   const items = buildFinanceReconciliationDraftItems({
     financial_account_id: 'acc-1',
@@ -375,7 +434,7 @@ test('draft mantém memória fraca em revisão com campos propostos', () => {
     duplicateHashes: new Set(),
     memories: [{
       id: 'mem-weak',
-      normalized_pattern: 'pagto atlas',
+      normalized_pattern: 'atlas cloud',
       direction: 'outflow',
       financial_entity_id: 'entity-atlas',
       financial_entity_name: 'Atlas Cloud',
@@ -394,4 +453,62 @@ test('draft mantém memória fraca em revisão com campos propostos', () => {
   assert.equal(items[0].confidence_band, 'blocked');
   assert.equal(items[0].proposed.financial_entity_id, 'entity-atlas');
   assert.equal(items[0].blocking_reason, 'Memória financeira com confiança insuficiente.');
+});
+
+test('draft ignora memória genérica pix mesmo com alta confiança', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [lineIn],
+    payables: [],
+    receivables: [],
+    transactions: [],
+    duplicateHashes: new Set(),
+    memories: [{
+      id: 'mem-pix',
+      normalized_pattern: 'pix',
+      direction: 'inflow',
+      financial_entity_id: 'entity-generic',
+      financial_entity_name: 'Entrada PIX',
+      financial_category_id: 'cat-generic',
+      financial_category_name: 'Receita genérica',
+      financial_cost_center_id: null,
+      financial_cost_center_name: null,
+      financial_payment_method_id: 'pm-pix',
+      financial_payment_method_name: 'PIX',
+      usage_count: 100,
+      confidence_score: 0.94
+    }]
+  });
+
+  assert.equal(items[0].decision_type, 'needs_review');
+  assert.equal(items[0].proposed.financial_entity_id, null);
+});
+
+test('draft aceita memória específica atlas cloud sem token genérico', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [lineOut],
+    payables: [],
+    receivables: [],
+    transactions: [],
+    duplicateHashes: new Set(),
+    memories: [{
+      id: 'mem-atlas-cloud',
+      normalized_pattern: 'atlas cloud',
+      direction: 'outflow',
+      financial_entity_id: 'entity-atlas',
+      financial_entity_name: 'Atlas Cloud',
+      financial_category_id: 'cat-software',
+      financial_category_name: 'Software',
+      financial_cost_center_id: 'cc-ops',
+      financial_cost_center_name: 'Operações',
+      financial_payment_method_id: 'pm-pix',
+      financial_payment_method_name: 'PIX',
+      usage_count: 3,
+      confidence_score: 0.86
+    }]
+  });
+
+  assert.equal(items[0].decision_type, 'new_transaction');
+  assert.equal(items[0].proposed.financial_entity_id, 'entity-atlas');
 });
