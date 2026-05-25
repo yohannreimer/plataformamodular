@@ -231,7 +231,23 @@ vi.mock('../api', () => ({
       resource_id: 'pay-1',
       remaining_issue_count: 0
     }),
-    listAccounts: vi.fn().mockResolvedValue({ company_id: null, company_name: null, accounts: [] }),
+    listAccounts: vi.fn().mockResolvedValue({
+      company_id: null,
+      company_name: null,
+      accounts: [{
+        id: 'acc-1',
+        organization_id: 'org-prymeira',
+        company_id: 'company-prymeira',
+        name: 'Banco principal',
+        kind: 'bank',
+        currency: 'BRL',
+        account_number: null,
+        branch_number: null,
+        is_active: true,
+        created_at: '2026-04-22T09:00:00.000Z',
+        updated_at: '2026-04-22T09:00:00.000Z'
+      }]
+    }),
     listTransactions: vi.fn().mockResolvedValue({ transactions: [] }),
     listImportJobs: vi.fn().mockResolvedValue({ company_id: null, company_name: null, jobs: [] }),
     listStatementEntries: vi.fn().mockResolvedValue({ company_id: null, company_name: null, entries: [] }),
@@ -305,6 +321,41 @@ vi.mock('../api', () => ({
         created_at: '2026-04-22T12:05:00.000Z',
         updated_at: '2026-04-22T12:05:00.000Z'
       }
+    }),
+    previewOfxReconciliation: vi.fn().mockResolvedValue({
+      organization_id: 'org-prymeira',
+      company_id: 'company-prymeira',
+      financial_account_id: 'acc-1',
+      source_file_name: 'maio.ofx',
+      source_file_hash: 'hash-1',
+      generated_at: '2026-05-25T00:00:00.000Z',
+      summary: { total_rows: 1, ready_count: 1, review_count: 0, blocked_count: 0, duplicate_count: 0, inflow_cents: 0, outflow_cents: 1990 },
+      items: []
+    }),
+    approveOfxReconciliation: vi.fn().mockResolvedValue({
+      batch_id: 'batch-1',
+      import_job: {
+        id: 'job-ofx',
+        organization_id: 'org-prymeira',
+        company_id: 'company-prymeira',
+        import_type: 'ofx',
+        source_file_name: 'maio.ofx',
+        source_file_mime_type: null,
+        source_file_size_bytes: 512,
+        status: 'completed',
+        total_rows: 1,
+        processed_rows: 1,
+        error_rows: 0,
+        error_summary: null,
+        created_by: 'financeiro',
+        created_at: '2026-05-25T00:00:00.000Z',
+        updated_at: '2026-05-25T00:00:00.000Z',
+        finished_at: '2026-05-25T00:00:00.000Z'
+      },
+      approved_count: 1,
+      skipped_count: 0,
+      matches: [],
+      transactions: []
     })
   }
 }));
@@ -406,4 +457,15 @@ test('reconciliation page creates a settled transaction from a statement entry',
   });
 
   expect(await screen.findByText('Lançamento criado e conciliado com sucesso.')).toBeInTheDocument();
+});
+
+test('FinanceReconciliationPage opens OFX import modal', async () => {
+  const user = userEvent.setup();
+  render(<FinanceReconciliationPage />);
+
+  expect(await screen.findByText('Pendências de conciliação')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Importar OFX' }));
+
+  expect(screen.getByRole('dialog', { name: 'Importar OFX' })).toBeInTheDocument();
+  expect(screen.getByLabelText('Conta bancária')).toBeInTheDocument();
 });

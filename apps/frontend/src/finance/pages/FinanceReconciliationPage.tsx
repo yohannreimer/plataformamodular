@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import {
   financeApi,
+  type FinanceAccount,
   type FinanceImportJob,
   type FinanceQualityInbox,
   type FinanceQualityIssue,
@@ -11,6 +12,7 @@ import {
   type FinanceReconciliationMatch,
   type FinanceReconciliationSuggestion
 } from '../api';
+import { FinanceOfxImportModal } from '../components/FinanceOfxImportModal';
 import { FinancePeriodFilter } from '../components/FinancePeriodFilter';
 import { FinanceQualityBadge } from '../components/FinanceQualityBadge';
 import { FinanceEmptyState, FinanceErrorState, FinanceLoadingState, FinanceMono, FinancePageHeader } from '../components/FinancePrimitives';
@@ -419,12 +421,14 @@ export function FinanceReconciliationPage() {
   const [reviewIssue, setReviewIssue] = useState<FinanceQualityIssue | null>(null);
   const [reviewCorrection, setReviewCorrection] = useState<Record<string, string>>({});
   const [saveAsDefault, setSaveAsDefault] = useState(true);
+  const [ofxModalOpen, setOfxModalOpen] = useState(false);
+  const [accounts, setAccounts] = useState<FinanceAccount[]>([]);
 
   useEffect(() => {
     let cancelled = false;
 
-    Promise.allSettled([financeApi.getReconciliationInbox(), financeApi.getQualityInbox()])
-      .then(([reconciliationResult, qualityResult]) => {
+    Promise.allSettled([financeApi.getReconciliationInbox(), financeApi.getQualityInbox(), financeApi.listAccounts()])
+      .then(([reconciliationResult, qualityResult, accountsResult]) => {
         if (cancelled) return;
 
         if (reconciliationResult.status === 'fulfilled') {
@@ -438,6 +442,12 @@ export function FinanceReconciliationPage() {
           setQualityInbox(qualityResult.value);
         } else {
           setQualityInbox(null);
+        }
+
+        if (accountsResult.status === 'fulfilled') {
+          setAccounts(accountsResult.value.accounts);
+        } else {
+          setAccounts([]);
         }
 
         setLoadError('');
@@ -623,13 +633,56 @@ export function FinanceReconciliationPage() {
     }
   }
 
+  function refreshReconciliationAfterOfxApproval() {
+    setOfxModalOpen(false);
+    setMessage('Lote OFX aprovado com sucesso.');
+    setInlineError('');
+    setLoading(true);
+
+    Promise.allSettled([financeApi.getReconciliationInbox(), financeApi.getQualityInbox(), financeApi.listAccounts()])
+      .then(([reconciliationResult, qualityResult, accountsResult]) => {
+        if (reconciliationResult.status === 'fulfilled') {
+          setInbox(reconciliationResult.value);
+        }
+        if (qualityResult.status === 'fulfilled') {
+          setQualityInbox(qualityResult.value);
+        }
+        if (accountsResult.status === 'fulfilled') {
+          setAccounts(accountsResult.value.accounts);
+        }
+      })
+      .finally(() => setLoading(false));
+  }
+
   return (
     <section className="page finance-page finance-reconciliation-page">
       <FinancePageHeader
         eyebrow="Conciliação & Revisão"
         title="Inbox operacional financeira"
         description="Gerencie pendências bancárias, sugestões de match, importações de extratos e qualidade dos lançamentos."
-        meta={<FinancePeriodFilter value={period} onChange={setPeriod} />}
+        meta={
+          <div style={{ alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => setOfxModalOpen(true)}
+              style={{
+                background: 'var(--accent)',
+                border: 'none',
+                borderRadius: 8,
+                color: 'white',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                fontSize: 12,
+                fontWeight: 800,
+                height: 32,
+                padding: '0 12px'
+              }}
+            >
+              Importar OFX
+            </button>
+            <FinancePeriodFilter value={period} onChange={setPeriod} />
+          </div>
+        }
       />
 
       {loading ? (
@@ -873,6 +926,14 @@ export function FinanceReconciliationPage() {
           ) : null}
         </div>
       ) : null}
+      <FinanceOfxImportModal
+        open={ofxModalOpen}
+        accounts={accounts}
+        onPreview={financeApi.previewOfxReconciliation}
+        onApprove={financeApi.approveOfxReconciliation}
+        onClose={() => setOfxModalOpen(false)}
+        onApproved={refreshReconciliationAfterOfxApproval}
+      />
     </section>
   );
 }
