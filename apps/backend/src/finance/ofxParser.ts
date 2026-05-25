@@ -31,14 +31,35 @@ function parseOfxDate(value: string | null) {
   if (!value || value.length < 8) {
     throw new Error('Linha OFX sem data válida.');
   }
-  return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
+  const dateText = value.slice(0, 8);
+  if (!/^\d{8}$/.test(dateText)) {
+    throw new Error('Linha OFX sem data válida.');
+  }
+
+  const year = Number.parseInt(dateText.slice(0, 4), 10);
+  const month = Number.parseInt(dateText.slice(4, 6), 10);
+  const day = Number.parseInt(dateText.slice(6, 8), 10);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    throw new Error('Linha OFX sem data válida.');
+  }
+
+  return `${dateText.slice(0, 4)}-${dateText.slice(4, 6)}-${dateText.slice(6, 8)}`;
 }
 
 function parseOfxAmountToCents(value: string | null) {
   if (!value) {
     throw new Error('Linha OFX sem valor válido.');
   }
-  const amount = Number.parseFloat(value.replace(',', '.'));
+  const normalizedValue = value.replace(',', '.');
+  if (!/^[+-]?\d+(?:\.\d+)?$/.test(normalizedValue)) {
+    throw new Error('Linha OFX sem valor válido.');
+  }
+  const amount = Number.parseFloat(normalizedValue);
   if (!Number.isFinite(amount)) {
     throw new Error('Linha OFX sem valor válido.');
   }

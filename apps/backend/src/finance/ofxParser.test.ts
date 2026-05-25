@@ -73,3 +73,53 @@ test('parseFinanceOfx rejeita arquivo sem STMTTRN', () => {
     /Nenhuma movimentação OFX encontrada/
   );
 });
+
+test('parseFinanceOfx rejeita datas OFX inválidas', () => {
+  for (const dtposted of ['abcdefgh', '20261399', '20260231']) {
+    assert.throws(
+      () => parseFinanceOfx({
+        organization_id: 'org-holand',
+        financial_account_id: 'acc-1',
+        source_file_name: 'data-invalida.ofx',
+        ofx_text: `
+<OFX>
+<BANKTRANLIST>
+<STMTTRN>
+<DTPOSTED>${dtposted}
+<TRNAMT>10.00
+<FITID>bad-date
+<MEMO>Movimento inválido
+</STMTTRN>
+</BANKTRANLIST>
+</OFX>
+`
+      }),
+      /Linha OFX sem data válida/
+    );
+  }
+});
+
+test('parseFinanceOfx rejeita valores OFX inválidos', () => {
+  for (const trnamt of ['123abc', '12.34.56', '--98.50']) {
+    assert.throws(
+      () => parseFinanceOfx({
+        organization_id: 'org-holand',
+        financial_account_id: 'acc-1',
+        source_file_name: 'valor-invalido.ofx',
+        ofx_text: `
+<OFX>
+<BANKTRANLIST>
+<STMTTRN>
+<DTPOSTED>20260524
+<TRNAMT>${trnamt}
+<FITID>bad-amount
+<MEMO>Movimento inválido
+</STMTTRN>
+</BANKTRANLIST>
+</OFX>
+`
+      }),
+      /Linha OFX sem valor válido/
+    );
+  }
+});
