@@ -7,6 +7,7 @@ import {
   type InternalPermissionKey
 } from '../internalAuth.js';
 import {
+  approveFinanceOfxReconciliation,
   approveFinancePayable,
   buildFinanceExport,
   createFinanceAccount,
@@ -62,6 +63,7 @@ import {
   listFinanceTransactions,
   partiallySettleFinancePayable,
   partiallySettleFinanceReceivable,
+  previewFinanceOfxReconciliation,
   resetFinanceOperationalData,
   settleFinancePayable,
   settleFinanceReceivable,
@@ -398,6 +400,34 @@ const statementTransactionCreateSchema = z.object({
   financial_cost_center_id: z.string().trim().min(1).nullable().optional(),
   financial_payment_method_id: z.string().trim().min(1).nullable().optional(),
   note: z.string().trim().max(2_000).nullable().optional()
+});
+
+const ofxPreviewSchema = z.object({
+  company_id: z.string().trim().min(1).nullable().optional(),
+  financial_account_id: z.string().trim().min(1),
+  source_file_name: z.string().trim().min(2).max(255),
+  source_file_size_bytes: z.number().int().min(0),
+  ofx_text: z.string().min(20)
+});
+
+const ofxApprovalItemSchema = z.object({
+  draft_item_id: z.string().trim().min(1),
+  decision_type: z.enum(['payable_match', 'receivable_match', 'ledger_match', 'new_transaction', 'needs_review', 'duplicate', 'invalid']),
+  approved: z.boolean(),
+  save_memory: z.boolean().optional(),
+  payable_id: z.string().trim().min(1).nullable().optional(),
+  receivable_id: z.string().trim().min(1).nullable().optional(),
+  financial_transaction_id: z.string().trim().min(1).nullable().optional(),
+  financial_entity_id: z.string().trim().min(1).nullable().optional(),
+  financial_category_id: z.string().trim().min(1).nullable().optional(),
+  financial_cost_center_id: z.string().trim().min(1).nullable().optional(),
+  financial_payment_method_id: z.string().trim().min(1).nullable().optional(),
+  note: z.string().trim().max(2_000).nullable().optional()
+});
+
+const ofxApproveSchema = ofxPreviewSchema.extend({
+  source_file_hash: z.string().trim().min(32).max(128),
+  approved_items: z.array(ofxApprovalItemSchema).min(1)
 });
 
 const debtCreateSchema = z.object({
@@ -1991,6 +2021,38 @@ export function registerFinanceRoutes(app: Express) {
         ...parsed.data,
         organization_id: readFinanceOrganizationId(res),
         reviewed_by: context?.username ?? null
+      }));
+    } catch (error) {
+      return respondFinanceError(res, error);
+    }
+  });
+
+  router.post('/reconciliation/ofx/preview', requireFinancePermission(['finance.read']), (req, res) => {
+    const parsed = ofxPreviewSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json(parsed.error.flatten());
+    }
+    try {
+      return res.json(previewFinanceOfxReconciliation({
+        ...parsed.data,
+        organization_id: readFinanceOrganizationId(res)
+      }));
+    } catch (error) {
+      return respondFinanceError(res, error);
+    }
+  });
+
+  router.post('/reconciliation/ofx/approve', requireFinancePermission(['finance.reconcile', 'finance.write']), (req, res) => {
+    const parsed = ofxApproveSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json(parsed.error.flatten());
+    }
+    try {
+      const context = readInternalAuthContext(res);
+      return res.status(201).json(approveFinanceOfxReconciliation({
+        ...parsed.data,
+        organization_id: readFinanceOrganizationId(res),
+        approved_by: context?.username ?? null
       }));
     } catch (error) {
       return respondFinanceError(res, error);

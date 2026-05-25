@@ -6233,3 +6233,99 @@ test('PATCH e DELETE bloqueiam transação já soft-deletada', async () => {
     cleanupDbFiles(dbPath);
   }
 });
+
+test('OFX preview and approval creates settled transaction, match, memory and blocks duplicates', async () => {
+  const dbPath = assignTestDbPath('finance-ofx-preview-approval');
+  cleanupDbFiles(dbPath);
+
+  const app = createApp({ forceDbRefresh: true, seedDb: false });
+
+  try {
+    seedFinanceCompanies();
+    createInternalUser({
+      username: 'finance.ofx',
+      display_name: 'Finance OFX',
+      password: 'Senha#123',
+      role: 'supremo',
+      permissions: ['finance.read', 'finance.write', 'finance.reconcile']
+    });
+
+    const loginRes = await request(app).post('/auth/login').send({ username: 'finance.ofx', password: 'Senha#123' });
+    assert.equal(loginRes.status, 200);
+    const token = loginRes.body.token as string;
+
+    const accountRes = await request(app)
+      .post('/finance/accounts')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ company_id: 'company-a', name: 'Banco OFX', kind: 'bank' });
+    assert.equal(accountRes.status, 201);
+
+    const categoryRes = await request(app)
+      .post('/finance/categories')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ company_id: 'company-a', name: 'Tarifas Bancárias', kind: 'expense' });
+    assert.equal(categoryRes.status, 201);
+
+    const ofxText = `<OFX><BANKTRANLIST><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-19.90<FITID>fee-1<MEMO>TARIFA BANCARIA</STMTTRN></BANKTRANLIST></OFX>`;
+
+    const previewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        company_id: 'company-a',
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'maio.ofx',
+        source_file_size_bytes: 512,
+        ofx_text: ofxText
+      });
+    assert.equal(previewRes.status, 200, JSON.stringify(previewRes.body));
+    assert.equal(previewRes.body.summary.total_rows, 1);
+    assert.equal(previewRes.body.items[0].decision_type, 'needs_review');
+
+    const approveRes = await request(app)
+      .post('/finance/reconciliation/ofx/approve')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        company_id: 'company-a',
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'maio.ofx',
+        source_file_size_bytes: 512,
+        source_file_hash: previewRes.body.source_file_hash,
+        ofx_text: ofxText,
+        approved_items: [{
+          draft_item_id: previewRes.body.items[0].id,
+          decision_type: 'new_transaction',
+          approved: true,
+          save_memory: true,
+          financial_category_id: categoryRes.body.id,
+          note: 'Tarifa bancaria'
+        }]
+      });
+    assert.equal(approveRes.status, 201, JSON.stringify(approveRes.body));
+    assert.equal(approveRes.body.approved_count, 1);
+    assert.equal(approveRes.body.transactions[0].status, 'settled');
+    assert.equal(approveRes.body.transactions[0].amount_cents, 1990);
+    assert.equal(approveRes.body.matches[0].match_status, 'matched');
+
+    const memoryRows = db.prepare('select normalized_pattern, usage_count from financial_reconciliation_memory').all() as Array<{ normalized_pattern: string; usage_count: number }>;
+    assert.equal(memoryRows.length, 1);
+    assert.equal(memoryRows[0].normalized_pattern, 'tarifa bancaria');
+    assert.equal(memoryRows[0].usage_count, 1);
+
+    const duplicatePreviewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        company_id: 'company-a',
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'maio.ofx',
+        source_file_size_bytes: 512,
+        ofx_text: ofxText
+      });
+    assert.equal(duplicatePreviewRes.status, 200);
+    assert.equal(duplicatePreviewRes.body.items[0].decision_type, 'duplicate');
+  } finally {
+    db.close();
+    cleanupDbFiles(dbPath);
+  }
+});
