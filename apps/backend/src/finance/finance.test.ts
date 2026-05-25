@@ -604,6 +604,156 @@ test('initDb cria estruturas para conciliacao OFX em lote e memoria', async () =
   }
 });
 
+test('initDb preserva colunas OFX ao reconstruir tabelas financeiras legadas', async () => {
+  const dbPath = assignTestDbPath('finance-ofx-reconciliation-legacy-rebuild');
+  cleanupDbFiles(dbPath);
+  resetDbConnection();
+
+  try {
+    db.exec(`
+      create table financial_import_job (
+        id text primary key,
+        organization_id text,
+        company_id text not null,
+        import_type text not null,
+        source_file_name text not null,
+        source_file_hash text,
+        source_file_mime_type text,
+        source_file_size_bytes integer,
+        status text not null,
+        total_rows integer,
+        processed_rows integer,
+        error_rows integer,
+        error_summary text,
+        created_by text,
+        created_at text not null,
+        updated_at text not null,
+        finished_at text
+      );
+
+      create table financial_bank_statement_entry (
+        id text primary key,
+        organization_id text,
+        company_id text not null,
+        financial_account_id text not null,
+        financial_import_job_id text,
+        statement_date text not null,
+        posted_at text,
+        amount_cents integer not null,
+        description text not null,
+        dedupe_hash text,
+        reference_code text,
+        balance_cents integer,
+        source text,
+        source_ref text,
+        created_at text not null,
+        updated_at text not null
+      );
+    `);
+    db.prepare(`
+      insert into financial_import_job (
+        id,
+        organization_id,
+        company_id,
+        import_type,
+        source_file_name,
+        source_file_hash,
+        source_file_mime_type,
+        source_file_size_bytes,
+        status,
+        total_rows,
+        processed_rows,
+        error_rows,
+        error_summary,
+        created_by,
+        created_at,
+        updated_at,
+        finished_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'legacy-job-ofx',
+      null,
+      'legacy-company',
+      'ofx',
+      'legacy.ofx',
+      'file-hash-123',
+      'application/x-ofx',
+      1234,
+      'completed',
+      1,
+      1,
+      0,
+      null,
+      'legacy-user',
+      '2026-05-24T10:00:00.000Z',
+      '2026-05-24T10:00:00.000Z',
+      '2026-05-24T10:01:00.000Z'
+    );
+    db.prepare(`
+      insert into financial_bank_statement_entry (
+        id,
+        organization_id,
+        company_id,
+        financial_account_id,
+        financial_import_job_id,
+        statement_date,
+        posted_at,
+        amount_cents,
+        description,
+        dedupe_hash,
+        reference_code,
+        balance_cents,
+        source,
+        source_ref,
+        created_at,
+        updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'legacy-entry-ofx',
+      null,
+      'legacy-company',
+      'legacy-account',
+      'legacy-job-ofx',
+      '2026-05-24',
+      '2026-05-24T10:00:00.000Z',
+      12345,
+      'Legacy OFX line',
+      'dedupe-hash-123',
+      'REF123',
+      50000,
+      'bank_import',
+      'source-ref',
+      '2026-05-24T10:00:00.000Z',
+      '2026-05-24T10:00:00.000Z'
+    );
+
+    initDb();
+
+    const importJobColumns = db.prepare('pragma table_info(financial_import_job)').all() as Array<{ name: string }>;
+    assert.ok(importJobColumns.some((column) => column.name === 'source_file_hash'));
+    const importJob = db.prepare(
+      'select source_file_hash from financial_import_job where id = ?'
+    ).get('legacy-job-ofx') as { source_file_hash: string | null } | undefined;
+    assert.equal(importJob?.source_file_hash, 'file-hash-123');
+
+    const statementColumns = db.prepare('pragma table_info(financial_bank_statement_entry)').all() as Array<{ name: string }>;
+    assert.ok(statementColumns.some((column) => column.name === 'dedupe_hash'));
+    const statement = db.prepare(
+      'select dedupe_hash from financial_bank_statement_entry where id = ?'
+    ).get('legacy-entry-ofx') as { dedupe_hash: string | null } | undefined;
+    assert.equal(statement?.dedupe_hash, 'dedupe-hash-123');
+
+    db.prepare(`
+      select id
+      from financial_bank_statement_entry
+      where organization_id = ? and financial_account_id = ? and dedupe_hash = ?
+    `).get('org-holand', 'legacy-account', 'dedupe-hash-123');
+  } finally {
+    db.close();
+    cleanupDbFiles(dbPath);
+  }
+});
+
 test('initDb cria tabela de interações do Whisper Flow financeiro', () => {
   const dbPath = assignTestDbPath('finance-whisper-schema');
   cleanupDbFiles(dbPath);

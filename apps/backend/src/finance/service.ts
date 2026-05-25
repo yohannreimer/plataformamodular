@@ -3730,6 +3730,7 @@ function mapImportJobRow(row: {
   company_id: string | null;
   import_type: string;
   source_file_name: string;
+  source_file_hash?: string | null;
   source_file_mime_type: string | null;
   source_file_size_bytes: number;
   status: string;
@@ -3748,6 +3749,7 @@ function mapImportJobRow(row: {
     company_id: row.company_id,
     import_type: row.import_type,
     source_file_name: row.source_file_name,
+    source_file_hash: row.source_file_hash ?? null,
     source_file_mime_type: row.source_file_mime_type,
     source_file_size_bytes: row.source_file_size_bytes,
     status: row.status as FinanceImportJobDto['status'],
@@ -3773,6 +3775,7 @@ function mapStatementEntryRow(row: {
   posted_at: string | null;
   amount_cents: number;
   description: string;
+  dedupe_hash?: string | null;
   reference_code: string | null;
   balance_cents: number | null;
   source: string;
@@ -3791,6 +3794,7 @@ function mapStatementEntryRow(row: {
     posted_at: row.posted_at,
     amount_cents: row.amount_cents,
     description: row.description,
+    dedupe_hash: row.dedupe_hash ?? null,
     reference_code: row.reference_code,
     balance_cents: row.balance_cents,
     source: row.source,
@@ -4302,6 +4306,7 @@ export function listFinanceImportJobs(organizationId: string, companyId?: string
       company_id,
       import_type,
       source_file_name,
+      source_file_hash,
       source_file_mime_type,
       source_file_size_bytes,
       status,
@@ -4323,6 +4328,7 @@ export function listFinanceImportJobs(organizationId: string, companyId?: string
     company_id: string | null;
     import_type: string;
     source_file_name: string;
+    source_file_hash: string | null;
     source_file_mime_type: string | null;
     source_file_size_bytes: number;
     status: string;
@@ -4360,6 +4366,7 @@ export function createFinanceImportJob(input: CreateFinanceImportJobInput): Fina
       company_id,
       import_type,
       source_file_name,
+      source_file_hash,
       source_file_mime_type,
       source_file_size_bytes,
       status,
@@ -4371,13 +4378,14 @@ export function createFinanceImportJob(input: CreateFinanceImportJobInput): Fina
       created_at,
       updated_at,
       finished_at
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     normalizedOrganizationId,
     companyId,
     input.import_type.trim(),
     input.source_file_name.trim(),
+    input.source_file_hash?.trim() || null,
     input.source_file_mime_type?.trim() || null,
     Math.max(0, Math.trunc(input.source_file_size_bytes ?? 0)),
     input.status ?? 'queued',
@@ -4398,6 +4406,7 @@ export function createFinanceImportJob(input: CreateFinanceImportJobInput): Fina
       company_id,
       import_type,
       source_file_name,
+      source_file_hash,
       source_file_mime_type,
       source_file_size_bytes,
       status,
@@ -4418,6 +4427,7 @@ export function createFinanceImportJob(input: CreateFinanceImportJobInput): Fina
     company_id: string | null;
     import_type: string;
     source_file_name: string;
+    source_file_hash: string | null;
     source_file_mime_type: string | null;
     source_file_size_bytes: number;
     status: string;
@@ -4459,6 +4469,7 @@ export function listFinanceStatementEntries(organizationId: string, companyId?: 
       fbe.posted_at,
       fbe.amount_cents,
       fbe.description,
+      fbe.dedupe_hash,
       fbe.reference_code,
       fbe.balance_cents,
       fbe.source,
@@ -4483,6 +4494,7 @@ export function listFinanceStatementEntries(organizationId: string, companyId?: 
     posted_at: string | null;
     amount_cents: number;
     description: string;
+    dedupe_hash: string | null;
     reference_code: string | null;
     balance_cents: number | null;
     source: string;
@@ -4540,13 +4552,14 @@ export function createFinanceStatementEntry(input: CreateFinanceStatementEntryIn
       posted_at,
       amount_cents,
       description,
+      dedupe_hash,
       reference_code,
       balance_cents,
       source,
       source_ref,
       created_at,
       updated_at
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     normalizedOrganizationId,
@@ -4557,6 +4570,7 @@ export function createFinanceStatementEntry(input: CreateFinanceStatementEntryIn
     input.posted_at ?? null,
     Math.trunc(input.amount_cents),
     input.description.trim(),
+    input.dedupe_hash?.trim() || null,
     input.reference_code?.trim() || null,
     input.balance_cents ?? null,
     input.source?.trim() || 'bank_import',
@@ -4577,6 +4591,7 @@ export function createFinanceStatementEntry(input: CreateFinanceStatementEntryIn
       fbe.posted_at,
       fbe.amount_cents,
       fbe.description,
+      fbe.dedupe_hash,
       fbe.reference_code,
       fbe.balance_cents,
       fbe.source,
@@ -4600,6 +4615,7 @@ export function createFinanceStatementEntry(input: CreateFinanceStatementEntryIn
     posted_at: string | null;
     amount_cents: number;
     description: string;
+    dedupe_hash: string | null;
     reference_code: string | null;
     balance_cents: number | null;
     source: string;

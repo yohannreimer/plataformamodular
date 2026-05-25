@@ -986,6 +986,7 @@ export type FinanceImportJobDto = {
   company_id: string | null;
   import_type: string;
   source_file_name: string;
+  source_file_hash: string | null;
   source_file_mime_type: string | null;
   source_file_size_bytes: number;
   status: FinanceImportJobStatus;
@@ -1010,6 +1011,7 @@ export type FinanceStatementEntryDto = {
   posted_at: string | null;
   amount_cents: number;
   description: string;
+  dedupe_hash: string | null;
   reference_code: string | null;
   balance_cents: number | null;
   source: string;
@@ -1123,6 +1125,7 @@ export type CreateFinanceImportJobInput = {
   company_id?: string | null;
   import_type: string;
   source_file_name: string;
+  source_file_hash?: string | null;
   source_file_mime_type?: string | null;
   source_file_size_bytes?: number;
   status?: FinanceImportJobStatus;
@@ -1143,6 +1146,7 @@ export type CreateFinanceStatementEntryInput = {
   posted_at?: string | null;
   amount_cents: number;
   description: string;
+  dedupe_hash?: string | null;
   reference_code?: string | null;
   balance_cents?: number | null;
   source?: string;
