@@ -6945,6 +6945,24 @@ test('OFX approval validates new transaction catalog dimensions', async () => {
       .send({ name: 'Receitas OFX', kind: 'income' });
     assert.equal(incomeCategoryRes.status, 201, JSON.stringify(incomeCategoryRes.body));
 
+    const expenseCategoryRes = await request(app)
+      .post('/finance/categories')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Despesas OFX', kind: 'expense' });
+    assert.equal(expenseCategoryRes.status, 201, JSON.stringify(expenseCategoryRes.body));
+
+    const customerEntityRes = await request(app)
+      .post('/finance/entities')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ legal_name: 'Cliente OFX', kind: 'customer' });
+    assert.equal(customerEntityRes.status, 201, JSON.stringify(customerEntityRes.body));
+
+    const supplierEntityRes = await request(app)
+      .post('/finance/entities')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ legal_name: 'Fornecedor OFX', kind: 'supplier' });
+    assert.equal(supplierEntityRes.status, 201, JSON.stringify(supplierEntityRes.body));
+
     const ofxText = `<OFX><BANKTRANLIST><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-44.00<FITID>catalog-1<MEMO>ATLAS CLOUD BACKUP</STMTTRN></BANKTRANLIST></OFX>`;
     const previewRes = await request(app)
       .post('/finance/reconciliation/ofx/preview')
@@ -6995,6 +7013,58 @@ test('OFX approval validates new transaction catalog dimensions', async () => {
         }]
       });
     assert.notEqual(otherCompanyCategoryRes.status, 201);
+
+    const wrongOutflowEntityRes = await request(app)
+      .post('/finance/reconciliation/ofx/approve')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: 'account-ofx-catalog-company-a',
+        source_file_name: 'catalogo.ofx',
+        source_file_size_bytes: 256,
+        source_file_hash: previewRes.body.source_file_hash,
+        ofx_text: ofxText,
+        approved_items: [{
+          draft_item_id: previewRes.body.items[0].id,
+          decision_type: 'new_transaction',
+          approved: true,
+          financial_entity_id: customerEntityRes.body.id,
+          financial_category_id: expenseCategoryRes.body.id,
+          note: 'Cliente em saída'
+        }]
+      });
+    assert.notEqual(wrongOutflowEntityRes.status, 201);
+
+    const inflowOfxText = `<OFX><BANKTRANLIST><STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20260524<TRNAMT>44.00<FITID>catalog-income-1<MEMO>ATLAS CLOUD RECEITA</STMTTRN></BANKTRANLIST></OFX>`;
+    const inflowPreviewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: 'account-ofx-catalog-company-a',
+        source_file_name: 'catalogo-entrada.ofx',
+        source_file_size_bytes: 256,
+        ofx_text: inflowOfxText
+      });
+    assert.equal(inflowPreviewRes.status, 200, JSON.stringify(inflowPreviewRes.body));
+
+    const wrongInflowEntityRes = await request(app)
+      .post('/finance/reconciliation/ofx/approve')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: 'account-ofx-catalog-company-a',
+        source_file_name: 'catalogo-entrada.ofx',
+        source_file_size_bytes: 256,
+        source_file_hash: inflowPreviewRes.body.source_file_hash,
+        ofx_text: inflowOfxText,
+        approved_items: [{
+          draft_item_id: inflowPreviewRes.body.items[0].id,
+          decision_type: 'new_transaction',
+          approved: true,
+          financial_entity_id: supplierEntityRes.body.id,
+          financial_category_id: incomeCategoryRes.body.id,
+          note: 'Fornecedor em entrada'
+        }]
+      });
+    assert.notEqual(wrongInflowEntityRes.status, 201);
     assert.equal(db.prepare('select count(*) as count from financial_import_job').get().count, 0);
     assert.equal(db.prepare('select count(*) as count from financial_transaction').get().count, 0);
   } finally {
@@ -7260,6 +7330,17 @@ test('OFX preview rejects files above parsed line limit', async () => {
       .send({ name: 'Banco Limite OFX', kind: 'bank' });
     assert.equal(accountRes.status, 201, JSON.stringify(accountRes.body));
 
+    const oversizedTextRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'grande.ofx',
+        source_file_size_bytes: 2 * 1024 * 1024 + 1,
+        ofx_text: '<OFX>' + 'X'.repeat(2 * 1024 * 1024 + 1)
+      });
+    assert.equal(oversizedTextRes.status, 400, JSON.stringify(oversizedTextRes.body));
+
     const lines = Array.from({ length: 2001 }, (_, index) => (
       `<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-1.00<FITID>line-limit-${index}<MEMO>LIMITE OFX ${index}</STMTTRN>`
     )).join('');
@@ -7273,6 +7354,36 @@ test('OFX preview rejects files above parsed line limit', async () => {
         ofx_text: `<OFX><BANKTRANLIST>${lines}</BANKTRANLIST></OFX>`
       });
     assert.notEqual(limitRes.status, 200);
+
+    const oneLineOfxText = `<OFX><BANKTRANLIST><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-1.00<FITID>approve-limit-1<MEMO>LIMITE APROVACAO</STMTTRN></BANKTRANLIST></OFX>`;
+    const previewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'limite-aprovacao.ofx',
+        source_file_size_bytes: 256,
+        ofx_text: oneLineOfxText
+      });
+    assert.equal(previewRes.status, 200, JSON.stringify(previewRes.body));
+
+    const approvalItem = {
+      draft_item_id: previewRes.body.items[0].id,
+      decision_type: 'new_transaction',
+      approved: false
+    };
+    const approvalLimitRes = await request(app)
+      .post('/finance/reconciliation/ofx/approve')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'limite-aprovacao.ofx',
+        source_file_size_bytes: 256,
+        source_file_hash: previewRes.body.source_file_hash,
+        ofx_text: oneLineOfxText,
+        approved_items: Array.from({ length: 2001 }, () => approvalItem)
+      });
+    assert.equal(approvalLimitRes.status, 400, JSON.stringify(approvalLimitRes.body));
   } finally {
     db.close();
     cleanupDbFiles(dbPath);

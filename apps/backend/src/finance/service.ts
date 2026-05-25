@@ -5474,7 +5474,13 @@ function validateOfxApprovalDimensions(input: {
   };
 
   if (dimensions.financial_entity_id) {
-    readFinanceEntityRow(input.organization_id, dimensions.financial_entity_id);
+    const entity = readFinanceEntityRow(input.organization_id, dimensions.financial_entity_id);
+    if (input.direction === 'outflow' && entity.kind === 'customer') {
+      throw new Error('Entidade financeira não é compatível com saída OFX.');
+    }
+    if (input.direction === 'inflow' && entity.kind === 'supplier') {
+      throw new Error('Entidade financeira não é compatível com entrada OFX.');
+    }
   }
   if (dimensions.financial_category_id) {
     const category = readFinanceCategoryRow(input.organization_id, dimensions.financial_category_id);
