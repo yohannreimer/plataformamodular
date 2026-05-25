@@ -24,7 +24,38 @@ export function normalizeReconciliationDescription(value: string) {
 
 function readTag(block: string, tag: string) {
   const match = new RegExp(`<${tag}>([^<\\r\\n]+)`, 'i').exec(block);
-  return match?.[1]?.trim() ?? null;
+  const value = match?.[1]?.trim();
+  return value ? decodeOfxEntities(value) : null;
+}
+
+function decodeOfxEntities(value: string) {
+  return value.replace(/&(#x[0-9a-f]+|#\d+|amp|quot|apos|lt|gt);/gi, (entity, body: string) => {
+    const normalizedBody = body.toLowerCase();
+    if (normalizedBody === 'amp') {
+      return '&';
+    }
+    if (normalizedBody === 'quot') {
+      return '"';
+    }
+    if (normalizedBody === 'apos') {
+      return "'";
+    }
+    if (normalizedBody === 'lt') {
+      return '<';
+    }
+    if (normalizedBody === 'gt') {
+      return '>';
+    }
+
+    const codePoint = normalizedBody.startsWith('#x')
+      ? Number.parseInt(normalizedBody.slice(2), 16)
+      : Number.parseInt(normalizedBody.slice(1), 10);
+    if (!Number.isInteger(codePoint) || codePoint < 0 || codePoint > 0x10ffff) {
+      return entity;
+    }
+
+    return String.fromCodePoint(codePoint);
+  });
 }
 
 function parseOfxDate(value: string | null) {
@@ -59,11 +90,21 @@ function parseOfxAmountToCents(value: string | null) {
   if (!/^[+-]?\d+(?:\.\d+)?$/.test(normalizedValue)) {
     throw new Error('Linha OFX sem valor válido.');
   }
-  const amount = Number.parseFloat(normalizedValue);
-  if (!Number.isFinite(amount)) {
+
+  const sign = normalizedValue.startsWith('-') ? -1 : 1;
+  const unsignedValue = normalizedValue.replace(/^[+-]/, '');
+  const [wholePart, decimalPart = ''] = unsignedValue.split('.');
+  const centDigits = (decimalPart + '00').slice(0, 2);
+  let absoluteCents = BigInt(wholePart) * 100n + BigInt(centDigits);
+  if (decimalPart.length > 2 && Number.parseInt(decimalPart[2], 10) >= 5) {
+    absoluteCents += 1n;
+  }
+
+  const cents = absoluteCents * BigInt(sign);
+  if (cents > BigInt(Number.MAX_SAFE_INTEGER) || cents < BigInt(Number.MIN_SAFE_INTEGER)) {
     throw new Error('Linha OFX sem valor válido.');
   }
-  return Math.round(amount * 100);
+  return Number(cents);
 }
 
 export function buildStatementDedupeHash(input: {

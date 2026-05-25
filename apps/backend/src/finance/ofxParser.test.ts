@@ -123,3 +123,61 @@ test('parseFinanceOfx rejeita valores OFX inválidos', () => {
     );
   }
 });
+
+test('parseFinanceOfx converte valores OFX para centavos com arredondamento decimal explícito', () => {
+  const cases: Array<[string, number]> = [
+    ['-98.50', -9850],
+    ['4500.00', 450000],
+    ['19', 1900],
+    ['19.9', 1990],
+    ['19,90', 1990],
+    ['1.005', 101],
+    ['10.075', 1008],
+    ['-1.005', -101]
+  ];
+
+  for (const [trnamt, expectedAmountCents] of cases) {
+    const parsed = parseFinanceOfx({
+      organization_id: 'org-holand',
+      financial_account_id: 'acc-1',
+      source_file_name: 'valores.ofx',
+      ofx_text: `
+<OFX>
+<BANKTRANLIST>
+<STMTTRN>
+<DTPOSTED>20260524
+<TRNAMT>${trnamt}
+<FITID>${trnamt}
+<MEMO>Movimento ${trnamt}
+</STMTTRN>
+</BANKTRANLIST>
+</OFX>
+`
+    });
+
+    assert.equal(parsed.lines[0].amount_cents, expectedAmountCents);
+  }
+});
+
+test('parseFinanceOfx decodifica entidades XML em descrições OFX', () => {
+  const parsed = parseFinanceOfx({
+    organization_id: 'org-holand',
+    financial_account_id: 'acc-1',
+    source_file_name: 'entidades.ofx',
+    ofx_text: `
+<OFX>
+<BANKTRANLIST>
+<STMTTRN>
+<DTPOSTED>20260524
+<TRNAMT>10.00
+<FITID>entities
+<MEMO>Atlas &amp; Filhos &quot;Cloud&quot; &apos;PIX&apos; &#193; &#xC1; &lt;tag&gt;
+</STMTTRN>
+</BANKTRANLIST>
+</OFX>
+`
+  });
+
+  assert.equal(parsed.lines[0].description, 'Atlas & Filhos "Cloud" \'PIX\' Á Á <tag>');
+  assert.equal(parsed.lines[0].normalized_description, 'atlas filhos cloud pix a a tag');
+});
