@@ -24,7 +24,7 @@ function MissingClerkConfig() {
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     {clerkPublishableKey ? (
-      <ClerkProvider publishableKey={clerkPublishableKey}>
+      <ClerkProvider publishableKey={clerkPublishableKey} signInUrl="/" afterSignOutUrl="/">
         <BrowserRouter>
           <ToastProvider>
             <App />

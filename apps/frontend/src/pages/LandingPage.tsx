@@ -2,8 +2,9 @@
 import {
   AlertCircle, FileSpreadsheet, Flag,
   TrendingUp, ArrowLeftRight, Landmark, Receipt,
-  Kanban, Target, Users, BarChart2,
+  Kanban, Calendar, Users, Award,
 } from 'lucide-react';
+const prymeiraLogo = '/favicon-32.png';
 import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { getAppTheme } from './login-themes';
@@ -139,7 +140,7 @@ function FluviaSolutionSection({ primary, primaryLight }: { primary: string; pri
             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#28c840' }} />
             <div style={{ flex: 1, background: '#3a4455', borderRadius: 4, height: 12, margin: '0 12px' }} />
           </div>
-          {/* Progress bar — key forces remount → resets animation on every change */}
+          {/* Progress bar — key resets CSS animation on slide change */}
           <div style={{ height: 3, background: primaryLight, position: 'relative', overflow: 'hidden' }}>
             <div
               key={active}
@@ -151,19 +152,38 @@ function FluviaSolutionSection({ primary, primaryLight }: { primary: string; pri
               }}
             />
           </div>
-          {/* Screenshot — full height, no crop */}
-          <img
-            key={feature.src}
-            src={feature.src}
-            alt={feature.label}
-            style={{ width: '100%', height: 'auto', display: 'block' }}
-          />
-          {/* Label bar */}
+          {/* Screenshot stack — crossfade via opacity, fixed height prevents layout shift */}
+          <div style={{ position: 'relative', height: 500, overflow: 'hidden', background: '#fff' }}>
+            {fluviaSolutionFeatures.map((f, i) => (
+              <img
+                key={f.src}
+                src={f.src}
+                alt={f.label}
+                style={{
+                  position: 'absolute',
+                  top: 0, left: 0,
+                  width: '100%', height: 'auto',
+                  display: 'block',
+                  opacity: i === active ? 1 : 0,
+                  transition: 'opacity 0.55s ease',
+                }}
+              />
+            ))}
+            {/* Soft gradient fade at bottom — signals more content, hides hard clip */}
+            <div style={{
+              position: 'absolute',
+              bottom: 0, left: 0, right: 0,
+              height: 80,
+              background: 'linear-gradient(to bottom, transparent, #ffffff)',
+              pointerEvents: 'none',
+            }} />
+          </div>
+          {/* Label bar — transitions smoothly via opacity */}
           <div style={{ padding: '16px 24px', borderTop: `3px solid ${primary}`, display: 'flex', alignItems: 'center', gap: 14, background: '#fff' }}>
-            <div style={{ width: 36, height: 36, background: primary, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
+            <div style={{ width: 36, height: 36, background: primary, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0, transition: 'background 0.3s' }}>
               {feature.icon}
             </div>
-            <div>
+            <div style={{ transition: 'opacity 0.3s', opacity: 1 }}>
               <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 2 }}>{feature.label}</div>
               <div style={{ fontSize: 13, color: '#666', lineHeight: 1.5 }}>{feature.desc}</div>
             </div>
@@ -263,14 +283,7 @@ function FluviaLandingPage() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div
-            style={{
-              width: 26,
-              height: 26,
-              background: 'linear-gradient(135deg, #0a3d6b 0%, #1e6fba 100%)',
-              borderRadius: 7,
-            }}
-          />
+          <img src={prymeiraLogo} alt="Prymeira" style={{ width: 22, height: 26, display: 'block' }} />
           <span style={{ fontSize: 17, fontWeight: 900, letterSpacing: '-0.03em' }}>Fluvia</span>
           <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 4 }}>by Prymeira</span>
         </div>
@@ -356,7 +369,6 @@ function FluviaLandingPage() {
               </a>
               <div style={{ fontSize: 13, color: '#64748b', display: 'flex', gap: 8, alignItems: 'center' }}>
                 <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span> Grátis pra começar
-                <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span> Sem cartão
               </div>
             </div>
           </div>
@@ -441,7 +453,7 @@ function FluviaLandingPage() {
       </div>
 
       {/* Problem */}
-      <section style={{ padding: '96px 24px', background: '#fafbfc' }}>
+      <section style={{ padding: '72px 24px 56px', background: '#fafbfc' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <p
             style={{
@@ -455,7 +467,7 @@ function FluviaLandingPage() {
           >
             O PROBLEMA
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 40, alignItems: 'start', marginBottom: 64 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 40, alignItems: 'start', marginBottom: 40 }}>
             <div
               style={{
                 fontSize: 'clamp(80px, 9vw, 130px)',
@@ -599,446 +611,415 @@ function FluviaLandingPage() {
   );
 }
 
+// ─── Velio solution (auto-rotating screenshots) ───────────────────────────────
+
+const VELIO_AUTO_INTERVAL = 4000;
+
+const velioSolutionFeatures = [
+  {
+    src: '/velio-planning.png',
+    icon: <Calendar size={16} />,
+    label: 'Planejamento',
+    desc: 'Mapa de 60 dias com todas as turmas e técnicos. Autoaloque encontros com um clique.',
+  },
+  {
+    src: '/velio-calendar.png',
+    icon: <Flag size={16} />,
+    label: 'Calendário de Execução',
+    desc: 'Visão mensal de toda a equipe. Conflitos, disponibilidade e carga por técnico de relance.',
+  },
+  {
+    src: '/velio-portal-agenda.png',
+    icon: <Users size={16} />,
+    label: 'Agenda do cliente',
+    desc: 'O cliente acompanha os próximos encontros no portal próprio. Sem WhatsApp, sem e-mail.',
+  },
+  {
+    src: '/velio-portal-certs.png',
+    icon: <Award size={16} />,
+    label: 'Certificados automáticos',
+    desc: 'Turma concluída → PDF gerado. O cliente baixa direto do portal. Nenhum trabalho manual.',
+  },
+  {
+    src: '/velio-board.png',
+    icon: <Kanban size={16} />,
+    label: 'Suporte & Implementação',
+    desc: 'Pendências de cada cliente num board Kanban. Backlog, prazos e chat por ticket.',
+  },
+];
+
+function VelioSolutionSection({ primary, primaryLight }: { primary: string; primaryLight: string }) {
+  const [active, setActive] = useState(0);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setActive(i => (i + 1) % velioSolutionFeatures.length);
+    }, VELIO_AUTO_INTERVAL);
+    return () => clearTimeout(timer);
+  }, [active]);
+
+  const feature = velioSolutionFeatures[active];
+
+  return (
+    <section style={{ background: '#fafaf7', padding: '72px 24px 80px', borderTop: '1px solid #f0ece0' }}>
+      <style>{`
+        @keyframes velioProgress {
+          from { width: 0% }
+          to { width: 100% }
+        }
+      `}</style>
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+        <p style={{ fontSize: 12, fontWeight: 700, color: '#bbb', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 16 }}>
+          A SOLUÇÃO
+        </p>
+        <h2 style={{ fontSize: 40, fontWeight: 900, lineHeight: 1.15, letterSpacing: '-0.02em', margin: '0 0 12px' }}>
+          Uma plataforma.<br />Toda a operação resolvida.
+        </h2>
+        <p style={{ fontSize: 16, color: '#666', margin: '0 0 32px', lineHeight: 1.6 }}>
+          Do planejamento das turmas ao certificado do cliente — sem planilha, sem WhatsApp, sem Word.
+        </p>
+
+        <div style={{
+          background: '#fff',
+          border: '1px solid #e8e0cc',
+          borderRadius: 16,
+          overflow: 'hidden',
+          boxShadow: '0 32px 80px rgba(176,125,22,0.14), 0 8px 24px rgba(176,125,22,0.06)',
+        }}>
+          {/* Chrome bar */}
+          <div style={{ background: '#1e1c10', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f57' }} />
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#febc2e' }} />
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#28c840' }} />
+            <div style={{ flex: 1, background: '#3a3820', borderRadius: 4, height: 12, margin: '0 12px' }} />
+          </div>
+          {/* Progress bar */}
+          <div style={{ height: 3, background: primaryLight, position: 'relative', overflow: 'hidden' }}>
+            <div
+              key={active}
+              style={{
+                position: 'absolute',
+                top: 0, left: 0, height: '100%',
+                background: primary,
+                animation: `velioProgress ${VELIO_AUTO_INTERVAL}ms linear forwards`,
+              }}
+            />
+          </div>
+          {/* Screenshot stack */}
+          <div style={{ position: 'relative', height: 500, overflow: 'hidden', background: '#f8f6f0' }}>
+            {velioSolutionFeatures.map((f, i) => (
+              <img
+                key={f.src}
+                src={f.src}
+                alt={f.label}
+                style={{
+                  position: 'absolute',
+                  top: 0, left: 0,
+                  width: '100%', height: 'auto',
+                  display: 'block',
+                  opacity: i === active ? 1 : 0,
+                  transition: 'opacity 0.55s ease',
+                }}
+              />
+            ))}
+            <div style={{
+              position: 'absolute',
+              bottom: 0, left: 0, right: 0,
+              height: 80,
+              background: 'linear-gradient(to bottom, transparent, #ffffff)',
+              pointerEvents: 'none',
+            }} />
+          </div>
+          {/* Label bar */}
+          <div style={{
+            padding: '16px 24px',
+            borderTop: `3px solid ${primary}`,
+            display: 'flex', alignItems: 'center', gap: 14,
+            background: '#fff',
+          }}>
+            <div style={{
+              width: 36, height: 36,
+              background: primary,
+              borderRadius: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#fff', flexShrink: 0,
+            }}>
+              {feature.icon}
+            </div>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 2 }}>{feature.label}</div>
+              <div style={{ fontSize: 13, color: '#666', lineHeight: 1.5 }}>{feature.desc}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Navigation pills */}
+        <div style={{ display: 'flex', gap: 8, marginTop: 20, flexWrap: 'wrap' as const }}>
+          {velioSolutionFeatures.map((f, i) => (
+            <button
+              key={f.label}
+              onClick={() => setActive(i)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 7,
+                padding: '9px 18px',
+                border: 'none', borderRadius: 999, cursor: 'pointer',
+                fontSize: 13, fontWeight: 700,
+                transition: 'all 0.15s',
+                background: active === i ? primary : '#fff',
+                color: active === i ? '#fff' : '#555',
+                boxShadow: active === i
+                  ? '0 4px 14px rgba(176,125,22,0.28)'
+                  : '0 1px 4px rgba(0,0,0,0.08)',
+              }}
+            >
+              <span style={{ opacity: active === i ? 1 : 0.5, display: 'flex' }}>{f.icon}</span>
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ─── Velio ─────────────────────────────────────────────────────────────────────
 
 function VelioLandingPage() {
-  const primary = '#4c1d95';
-  const primaryLight = '#ede9fe';
-  const primaryMedium = '#6d28d9';
+  const primary = '#b07d16';
+  const primaryLight = '#fef3c7';
   const accent = '#f0c040';
   const signUpUrl = '/';
 
+  const stats = [
+    { num: '60 dias', label: 'de mapa de planejamento' },
+    { num: 'Portal', label: 'incluso para seus clientes' },
+    { num: 'PDF', label: 'certificado gerado automático' },
+  ];
+
   return (
-    <div
-      style={{
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-        color: '#0a0a0a',
-        lineHeight: 1.5,
-      }}
-    >
+    <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', color: '#0a0a0a', lineHeight: 1.5 }}>
+      <style>{`
+        .velio-cta-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(176,125,22,0.42) !important; }
+        .velio-accent-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(240,192,64,0.48) !important; }
+      `}</style>
+
       {/* Navbar */}
-      <nav
-        style={{
-          background: '#fff',
-          padding: '12px 24px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: '1px solid #f0f0f0',
-          position: 'sticky',
-          top: 0,
-          zIndex: 50,
-        }}
-      >
+      <nav style={{
+        background: 'rgba(255,255,255,0.9)',
+        backdropFilter: 'blur(12px)',
+        padding: '12px 24px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        borderBottom: '1px solid rgba(0,0,0,0.06)',
+        position: 'sticky', top: 0, zIndex: 50,
+      }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div
-            style={{
-              width: 22,
-              height: 22,
-              background: `linear-gradient(135deg, ${primary}, ${primaryMedium})`,
-              borderRadius: 5,
-            }}
-          />
-          <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.02em' }}>Velio</span>
-          <span style={{ fontSize: 11, color: '#bbb', marginLeft: 4 }}>by Prymeira</span>
+          <img src={prymeiraLogo} alt="Prymeira" style={{ width: 20, height: 24, display: 'block' }} />
+          <span style={{ fontSize: 17, fontWeight: 900, letterSpacing: '-0.03em' }}>Velio</span>
+          <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 4 }}>by Prymeira</span>
         </div>
         <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
           <a href="/" style={{ fontSize: 13, color: '#666', textDecoration: 'none' }}>Entrar</a>
-          <a
-            href={signUpUrl}
-            style={{
-              background: primary,
-              color: '#fff',
-              borderRadius: 6,
-              padding: '7px 16px',
-              fontSize: 13,
-              fontWeight: 600,
-              textDecoration: 'none',
-            }}
-          >
-            Criar conta grátis
-          </a>
+          <a href={signUpUrl} style={{
+            background: primary, color: '#fff', borderRadius: 8,
+            padding: '8px 18px', fontSize: 13, fontWeight: 700, textDecoration: 'none',
+          }}>Criar conta grátis</a>
         </div>
       </nav>
 
-      {/* Hero — centrado + screenshot perspectiva */}
-      <section style={{ background: '#fff', padding: '72px 24px 56px', textAlign: 'center' }}>
-        <div style={{ maxWidth: 700, margin: '0 auto' }}>
-          <div
-            style={{
-              display: 'inline-block',
-              background: primaryLight,
-              borderRadius: 20,
-              padding: '4px 14px',
-              marginBottom: 18,
-            }}
-          >
-            <span
-              style={{
-                fontSize: 12,
-                color: primaryMedium,
-                fontWeight: 700,
-                letterSpacing: '0.04em',
-              }}
-            >
-              Para heads de tecnologia e engenharia
-            </span>
+      {/* Hero */}
+      <section style={{
+        background: 'radial-gradient(ellipse 85% 75% at 72% 50%, #f5e8c0 0%, #faf4e0 28%, #fdf8ee 55%, #fefdf8 100%)',
+        padding: '88px 24px 80px',
+      }}>
+        <div style={{
+          maxWidth: 1100, margin: '0 auto',
+          display: 'grid', gridTemplateColumns: '1fr 1fr',
+          gap: 56, alignItems: 'center',
+        }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 22 }}>
+              <div style={{ width: 5, height: 5, borderRadius: '50%', background: primary }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: primary, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
+                Para empresas de treinamento técnico
+              </span>
+            </div>
+            <h1 style={{
+              fontSize: 'clamp(44px, 5vw, 68px)',
+              fontWeight: 900, lineHeight: 1.0,
+              letterSpacing: '-0.04em', margin: '0 0 22px',
+            }}>
+              Do planejamento<br />ao certificado<span style={{ color: accent }}>.</span><br />Tudo numa plataforma.
+            </h1>
+            <p style={{ fontSize: 18, color: '#4a5568', lineHeight: 1.72, margin: '0 0 36px', maxWidth: 420 }}>
+              Gerencie turmas, técnicos e clientes — e ainda dê ao seu cliente um portal próprio para acompanhar cada etapa.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <a href={signUpUrl} className="velio-cta-btn" style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                background: primary, color: '#fff',
+                borderRadius: 10, padding: '15px 32px',
+                fontSize: 16, fontWeight: 800, textDecoration: 'none',
+                width: 'fit-content',
+                boxShadow: '0 8px 24px rgba(176,125,22,0.28)',
+                letterSpacing: '-0.01em',
+                transition: 'transform 0.15s, box-shadow 0.15s',
+              }}>
+                Criar conta grátis →
+              </a>
+              <div style={{ fontSize: 13, color: '#64748b', display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span> Grátis pra começar
+              </div>
+            </div>
           </div>
-          <h1
-            style={{
-              fontSize: 56,
-              fontWeight: 900,
-              lineHeight: 1.05,
-              letterSpacing: '-0.03em',
-              margin: '0 0 16px',
-            }}
-          >
-            Menos reunião.<br />Mais entrega.
-          </h1>
-          <p style={{ fontSize: 17, color: '#555', lineHeight: 1.65, margin: '0 0 28px' }}>
-            Projetos, tarefas e times num só lugar.<br />
-            Do objetivo ao resultado, sem perder o fio.
-          </p>
-          <div
-            style={{
-              display: 'inline-flex',
-              gap: 16,
-              alignItems: 'center',
-              marginBottom: 40,
-            }}
-          >
-            <a
-              href={signUpUrl}
-              style={{
-                background: primary,
-                color: '#fff',
-                borderRadius: 8,
-                padding: '14px 28px',
-                fontSize: 15,
-                fontWeight: 700,
-                textDecoration: 'none',
-              }}
-            >
-              Criar conta grátis →
-            </a>
-            <span style={{ fontSize: 14, color: '#aaa' }}>Ver demo</span>
-          </div>
-        </div>
 
-        {/* Screenshot com perspectiva top-down e floating cards */}
-        <div
-          style={{
-            maxWidth: 680,
-            margin: '0 auto',
-            position: 'relative',
-            paddingBottom: 24,
-          }}
-        >
-          <div
-            style={{
-              borderRadius: 12,
-              overflow: 'hidden',
-              transform: 'perspective(900px) rotateX(6deg)',
-              boxShadow: '0 12px 48px rgba(109,40,217,0.22)',
-            }}
-          >
-            <div
-              style={{
-                background: '#2a1840',
-                height: 28,
-                display: 'flex',
-                alignItems: 'center',
-                padding: '0 16px',
-                gap: 6,
-              }}
-            >
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f57' }} />
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#febc2e' }} />
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#28c840' }} />
-              <div
-                style={{ flex: 1, background: '#3a2255', borderRadius: 4, height: 12, margin: '0 12px' }}
+          <div style={{ position: 'relative' }}>
+            <div style={{
+              borderRadius: 14, overflow: 'hidden',
+              transform: 'perspective(900px) rotateY(-12deg) rotateX(4deg)',
+              boxShadow: '28px 32px 80px rgba(176,125,22,0.22), 0 4px 16px rgba(176,125,22,0.08)',
+            }}>
+              <div style={{
+                background: '#1e1c10', height: 34,
+                display: 'flex', alignItems: 'center',
+                padding: '0 16px', gap: 6,
+              }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(255,255,255,0.3)' }} />
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>
+                  Planejamento de Agenda — Velio
+                </span>
+              </div>
+              <img
+                src="/velio-planning.png"
+                alt="Planejamento Velio"
+                width={600}
+                height={230}
+                style={{ width: '100%', height: 230, objectFit: 'cover', objectPosition: 'top', display: 'block' }}
               />
             </div>
-            <ScreenshotPlaceholder
-              height={260}
-              label="screenshot do kanban / board"
-              tint={primaryLight}
-              border="#d8c8f8"
-            />
-          </div>
-          {/* Floating card — sprint */}
-          <div
-            style={{
-              position: 'absolute',
-              top: -10,
-              right: -10,
-              background: '#fff',
-              border: `1px solid ${primaryLight}`,
-              borderRadius: 10,
-              padding: '10px 16px',
-              boxShadow: '0 4px 16px rgba(109,40,217,0.14)',
-            }}
-          >
-            <div style={{ fontSize: 11, color: '#888', marginBottom: 2 }}>Sprint 12</div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: primaryMedium }}>84% concluído</div>
-          </div>
-          {/* Floating card — avatares */}
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 0,
-              left: -10,
-              background: '#fff',
-              border: `1px solid ${primaryLight}`,
-              borderRadius: 10,
-              padding: '8px 14px',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <div style={{ display: 'flex' }}>
-              {[primary, primaryMedium, '#8b5cf6'].map((c, i) => (
-                <div
-                  key={i}
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: '50%',
-                    background: c,
-                    border: '2px solid #fff',
-                    marginLeft: i > 0 ? -6 : 0,
-                  }}
-                />
-              ))}
+            <div style={{
+              position: 'absolute', bottom: -28, right: -20,
+              background: '#fff', border: '1px solid rgba(176,125,22,0.12)',
+              borderRadius: 14, padding: '14px 22px',
+              boxShadow: '0 12px 36px rgba(0,0,0,0.1)',
+            }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 5 }}>
+                Turmas ativas
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: primary, letterSpacing: '-0.03em' }}>12 em andamento</div>
             </div>
-            <span style={{ fontSize: 12, color: '#666' }}>3 online agora</span>
           </div>
         </div>
       </section>
 
-      {/* Trust bar */}
-      <div
-        style={{
-          background: '#f8f7ff',
-          padding: '16px 24px',
-          borderTop: '1px solid #f0f0f0',
-          borderBottom: '1px solid #f0f0f0',
-          textAlign: 'center',
-        }}
-      >
-        <p
-          style={{
-            fontSize: 11,
-            color: '#bbb',
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            margin: '0 0 10px',
-          }}
-        >
-          Confiado por times de tecnologia
-        </p>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 24, alignItems: 'center' }}>
-          {[48, 38, 56, 42].map((w, i) => (
-            <div key={i} style={{ width: w, height: 12, background: '#e0d8f8', borderRadius: 3 }} />
+      {/* Stats bar */}
+      <div style={{ background: primary, padding: '20px 24px' }}>
+        <div style={{
+          maxWidth: 1100, margin: '0 auto',
+          display: 'flex', justifyContent: 'center',
+          gap: 56, alignItems: 'center',
+        }}>
+          {stats.map((s, i) => (
+            <div key={s.num} style={{ display: 'flex', alignItems: 'center', gap: 56 }}>
+              {i > 0 && <div style={{ width: 1, height: 32, background: 'rgba(255,255,255,0.12)' }} />}
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 900, color: accent, letterSpacing: '-0.02em' }}>{s.num}</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 3 }}>{s.label}</div>
+              </div>
+            </div>
           ))}
         </div>
       </div>
 
-      {/* Problem — Before/After */}
-      <section style={{ padding: '80px 24px' }}>
+      {/* Problem */}
+      <section style={{ padding: '72px 24px 56px', background: '#fafbfc' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-          <p
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: '#bbb',
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              marginBottom: 16,
-            }}
-          >
+          <p style={{ fontSize: 11, fontWeight: 800, color: '#cbd5e1', letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginBottom: 24 }}>
             O PROBLEMA
           </p>
-          <h2
-            style={{
-              fontSize: 44,
-              fontWeight: 900,
-              lineHeight: 1.1,
-              letterSpacing: '-0.02em',
-              margin: '0 0 32px',
-            }}
-          >
-            Seu time sabe o que<br />precisa entregar hoje?
+          <h2 style={{
+            fontSize: 'clamp(32px, 3.2vw, 46px)',
+            fontWeight: 900, lineHeight: 1.1,
+            letterSpacing: '-0.03em', margin: '0 0 32px',
+          }}>
+            Como você gerencia 8 técnicos<br />e 30 turmas simultâneas hoje?
           </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <div
-              style={{
-                background: '#fff5f5',
-                border: '1px solid #ffd5d5',
-                borderRadius: 10,
-                padding: '20px 24px',
-              }}
-            >
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#c00', marginBottom: 10 }}>Antes</div>
-              <div style={{ fontSize: 15, color: '#555', lineHeight: 1.7 }}>
-                Tarefa no WhatsApp · Deadline por email · Status &ldquo;na reunião de sexta&rdquo;
-              </div>
-            </div>
-            <div
-              style={{
-                background: '#f0fdf4',
-                border: '1px solid #bbf7d0',
-                borderRadius: 10,
-                padding: '20px 24px',
-              }}
-            >
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#16a34a', marginBottom: 10 }}>
-                Com Velio
-              </div>
-              <div style={{ fontSize: 15, color: '#555', lineHeight: 1.7 }}>
-                Board visual · Prioridades claras · Progresso em tempo real
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Features — grid 2x2 */}
-      <section style={{ background: '#f8f7ff', padding: '80px 24px', borderTop: '1px solid #f0f0f0' }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-          <p
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: '#bbb',
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              marginBottom: 16,
-            }}
-          >
-            FUNCIONALIDADES
-          </p>
-          <h2
-            style={{
-              fontSize: 40,
-              fontWeight: 900,
-              lineHeight: 1.15,
-              letterSpacing: '-0.02em',
-              margin: '0 0 36px',
-            }}
-          >
-            Tudo que o seu time<br />precisa para entregar.
-          </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
             {[
               {
-                icon: <Kanban size={18} />,
-                title: 'Board Kanban',
-                desc: 'Visualize o fluxo de trabalho inteiro',
+                num: '01',
+                title: 'Planilha que ninguém confia',
+                sub: 'Cada técnico tem a sua versão. Última atualizada? Ninguém sabe ao certo.',
               },
               {
-                icon: <Target size={18} />,
-                title: 'Sprints',
-                desc: 'Planejamento e rastreamento ágil',
+                num: '02',
+                title: 'Cliente no escuro',
+                sub: 'Sua equipe sabe o que está acontecendo. O cliente fica ligando pra descobrir.',
               },
               {
-                icon: <Users size={18} />,
-                title: 'Time e carga',
-                desc: 'Quem faz o quê, e quando',
+                num: '03',
+                title: 'Certificado na mão',
+                sub: 'Turma concluída. Vem o PDF no Word, a assinatura manual e o envio por e-mail.',
               },
-              {
-                icon: <BarChart2 size={18} />,
-                title: 'Métricas',
-                desc: 'Velocidade, burndown, throughput',
-              },
-            ].map(({ icon, title, desc }) => (
-              <div
-                key={title}
-                style={{
-                  background: '#fff',
-                  border: `1px solid ${primaryLight}`,
-                  borderRadius: 10,
-                  padding: '20px 24px',
-                }}
-              >
-                <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    background: primaryLight,
-                    borderRadius: 8,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: primaryMedium,
-                    marginBottom: 12,
-                  }}
-                >
-                  {icon}
-                </div>
-                <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>{title}</div>
-                <div style={{ fontSize: 14, color: '#888', lineHeight: 1.5 }}>{desc}</div>
+            ].map(card => (
+              <div key={card.num} style={{
+                background: '#fff5f5', border: '1px solid #fde0e0',
+                borderRadius: 10, padding: '28px 24px',
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#dc2626', letterSpacing: '0.1em', marginBottom: 16 }}>{card.num}</div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: '#111', lineHeight: 1.3, marginBottom: 10 }}>{card.title}</div>
+                <div style={{ fontSize: 14, color: '#888', lineHeight: 1.65 }}>{card.sub}</div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
+      {/* Solution */}
+      <VelioSolutionSection primary={primary} primaryLight={primaryLight} />
+
       {/* CTA Final */}
-      <section
-        style={{
-          background: 'linear-gradient(160deg, #1e0a4c, #4c1d95)',
-          padding: '88px 24px',
-          textAlign: 'center',
-        }}
-      >
-        <h2
-          style={{
-            fontSize: 44,
-            fontWeight: 900,
-            color: '#fff',
-            lineHeight: 1.15,
-            letterSpacing: '-0.02em',
-            margin: '0 0 12px',
-          }}
-        >
-          Seu time merece<br />uma ferramenta à altura.<br />
-          <span style={{ color: accent }}>Comece hoje.</span>
-        </h2>
-        <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.45)', margin: '0 0 28px' }}>
-          Grátis pra começar. Sem cartão de crédito.
-        </p>
-        <a
-          href={signUpUrl}
-          style={{
-            display: 'inline-flex',
-            background: accent,
-            borderRadius: 8,
-            padding: '14px 32px',
-            fontSize: 16,
-            fontWeight: 800,
-            color: '#111',
-            textDecoration: 'none',
-            boxShadow: '0 4px 20px rgba(240,192,64,0.35)',
-          }}
-        >
-          Criar conta grátis →
-        </a>
+      <section style={{
+        background: 'linear-gradient(160deg, #15120a, #221c08)',
+        position: 'relative', overflow: 'hidden',
+        padding: '104px 24px', textAlign: 'center',
+      }}>
+        <div style={{
+          position: 'absolute', inset: 0,
+          backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px)',
+          backgroundSize: '28px 28px', pointerEvents: 'none',
+        }} />
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <h2 style={{
+            fontSize: 'clamp(36px, 4vw, 56px)',
+            fontWeight: 900, color: '#fff',
+            lineHeight: 1.1, letterSpacing: '-0.03em',
+            margin: '0 0 18px',
+          }}>
+            Mostre ao seu cliente<br />que você é organizado.<br />
+            <span style={{ color: accent }}>Comece hoje.</span>
+          </h2>
+          <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.38)', margin: '0 0 36px' }}>
+            Grátis pra começar.
+          </p>
+          <a href={signUpUrl} className="velio-accent-btn" style={{
+            background: accent, borderRadius: 10,
+            padding: '16px 40px', fontSize: 17, fontWeight: 900,
+            color: '#1a1408', textDecoration: 'none',
+            display: 'inline-flex', letterSpacing: '-0.01em',
+            boxShadow: '0 8px 32px rgba(240,192,64,0.32)',
+            transition: 'transform 0.15s, box-shadow 0.15s',
+          }}>
+            Criar conta grátis →
+          </a>
+        </div>
       </section>
 
       {/* Footer */}
-      <footer
-        style={{
-          background: '#fff',
-          padding: '20px 24px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderTop: '1px solid #f0f0f0',
-        }}
-      >
+      <footer style={{
+        background: '#fff', padding: '20px 24px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        borderTop: '1px solid #f0f0f0',
+      }}>
         <span style={{ fontSize: 13, color: '#bbb' }}>© 2026 Prymeira · Velio</span>
         <span style={{ fontSize: 13, color: '#bbb' }}>Termos · Privacidade</span>
       </footer>
