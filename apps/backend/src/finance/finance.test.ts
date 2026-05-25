@@ -6483,6 +6483,58 @@ test('OFX approval rejects unsafe client decisions before writes', async () => {
     assert.notEqual(duplicateIdApproveRes.status, 201);
     assert.equal(db.prepare('select count(*) as count from financial_import_job').get().count, 0);
 
+    const titleAccountRes = await request(app)
+      .post('/finance/accounts')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Banco Título OFX', kind: 'bank' });
+    assert.equal(titleAccountRes.status, 201, JSON.stringify(titleAccountRes.body));
+
+    const crossAccountPayableRes = await request(app)
+      .post('/finance/payables')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: titleAccountRes.body.id,
+        description: 'ATLAS CLOUD',
+        amount_cents: 2200,
+        status: 'open',
+        issue_date: '2026-05-24',
+        due_date: '2026-05-24'
+      });
+    assert.equal(crossAccountPayableRes.status, 201, JSON.stringify(crossAccountPayableRes.body));
+
+    const crossAccountPayablePreviewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'payable-cross-account.ofx',
+        source_file_size_bytes: 256,
+        ofx_text: ofxText
+      });
+    assert.equal(crossAccountPayablePreviewRes.status, 200, JSON.stringify(crossAccountPayablePreviewRes.body));
+    assert.equal(crossAccountPayablePreviewRes.body.items[0].decision_type, 'payable_match');
+    assert.equal(crossAccountPayablePreviewRes.body.items[0].target.payable_id, crossAccountPayableRes.body.id);
+
+    const crossAccountPayableApproveRes = await request(app)
+      .post('/finance/reconciliation/ofx/approve')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'payable-cross-account.ofx',
+        source_file_size_bytes: 256,
+        source_file_hash: crossAccountPayablePreviewRes.body.source_file_hash,
+        ofx_text: ofxText,
+        approved_items: [{
+          draft_item_id: crossAccountPayablePreviewRes.body.items[0].id,
+          decision_type: 'payable_match',
+          approved: true,
+          payable_id: crossAccountPayableRes.body.id
+        }]
+      });
+    assert.notEqual(crossAccountPayableApproveRes.status, 201);
+    assert.equal(db.prepare('select count(*) as count from financial_bank_statement_entry').get().count, 0);
+    db.prepare("update financial_payable set status = 'canceled' where id = ?").run(crossAccountPayableRes.body.id);
+
     const ledgerARes = await request(app)
       .post('/finance/transactions')
       .set('Authorization', `Bearer ${token}`)

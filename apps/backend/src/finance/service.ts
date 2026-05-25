@@ -5422,6 +5422,9 @@ export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): 
         if (preview.company_id && payable.company_id && payable.company_id !== preview.company_id) {
           throw new Error('Empresa da conta a pagar não confere com a prévia.');
         }
+        if (payable.financial_account_id && payable.financial_account_id !== preview.financial_account_id) {
+          throw new Error('Conta do título não corresponde à conta do OFX.');
+        }
         const remainingAmount = Math.max(0, payable.amount_cents - payable.paid_amount_cents);
         if (Math.abs(line.amount_cents) > remainingAmount) {
           throw new Error('Valor do extrato excede o saldo da conta a pagar.');
@@ -5455,6 +5458,9 @@ export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): 
         const receivable = readFinanceReceivable(normalizedOrganizationId, validatedTargetId ?? '');
         if (preview.company_id && receivable.company_id && receivable.company_id !== preview.company_id) {
           throw new Error('Empresa da conta a receber não confere com a prévia.');
+        }
+        if (receivable.financial_account_id && receivable.financial_account_id !== preview.financial_account_id) {
+          throw new Error('Conta do título não corresponde à conta do OFX.');
         }
         const remainingAmount = Math.max(0, receivable.amount_cents - receivable.received_amount_cents);
         if (Math.abs(line.amount_cents) > remainingAmount) {
