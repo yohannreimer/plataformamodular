@@ -4933,17 +4933,6 @@ export function createFinanceTransactionFromStatement(
   })();
 }
 
-function readOfxDuplicateHashes(organizationId: string, financialAccountId: string) {
-  const rows = db.prepare(`
-    select dedupe_hash
-    from financial_bank_statement_entry
-    where organization_id = ?
-      and financial_account_id = ?
-      and dedupe_hash is not null
-  `).all(organizationId, financialAccountId) as Array<{ dedupe_hash: string }>;
-  return new Set(rows.map((row) => row.dedupe_hash));
-}
-
 function readReconciliationMemories(
   organizationId: string,
   financialAccountId: string,
@@ -5039,7 +5028,11 @@ export function previewFinanceOfxReconciliation(input: FinanceOfxPreviewRequest)
     receivables: listFinanceReceivables(normalizedOrganizationId, companyId).receivables,
     transactions: listFinanceTransactions(normalizedOrganizationId).transactions,
     memories: readReconciliationMemories(normalizedOrganizationId, input.financial_account_id, companyId),
-    duplicateHashes: readOfxDuplicateHashes(normalizedOrganizationId, input.financial_account_id)
+    duplicateHashes: listExistingStatementDedupeHashes(
+      normalizedOrganizationId,
+      input.financial_account_id,
+      parsed.lines.map((line) => line.dedupe_hash)
+    )
   });
 
   return {
@@ -5163,6 +5156,15 @@ export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): 
       }
 
       const line = item.line;
+      const duplicateHashes = listExistingStatementDedupeHashes(
+        normalizedOrganizationId,
+        preview.financial_account_id,
+        [line.dedupe_hash]
+      );
+      if (duplicateHashes.has(line.dedupe_hash)) {
+        throw new Error('Linha OFX já importada para esta conta.');
+      }
+
       const statementEntry = createFinanceStatementEntry({
         organization_id: normalizedOrganizationId,
         company_id: preview.company_id,

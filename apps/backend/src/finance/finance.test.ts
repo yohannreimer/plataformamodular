@@ -6258,13 +6258,13 @@ test('OFX preview and approval creates settled transaction, match, memory and bl
       .post('/finance/accounts')
       .set('Authorization', `Bearer ${token}`)
       .send({ company_id: 'company-a', name: 'Banco OFX', kind: 'bank' });
-    assert.equal(accountRes.status, 201);
+    assert.equal(accountRes.status, 201, JSON.stringify(accountRes.body));
 
     const categoryRes = await request(app)
       .post('/finance/categories')
       .set('Authorization', `Bearer ${token}`)
       .send({ company_id: 'company-a', name: 'Tarifas Bancárias', kind: 'expense' });
-    assert.equal(categoryRes.status, 201);
+    assert.equal(categoryRes.status, 201, JSON.stringify(categoryRes.body));
 
     const ofxText = `<OFX><BANKTRANLIST><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-19.90<FITID>fee-1<MEMO>TARIFA BANCARIA</STMTTRN></BANKTRANLIST></OFX>`;
 
@@ -6324,6 +6324,28 @@ test('OFX preview and approval creates settled transaction, match, memory and bl
       });
     assert.equal(duplicatePreviewRes.status, 200);
     assert.equal(duplicatePreviewRes.body.items[0].decision_type, 'duplicate');
+
+    const duplicateApproveRes = await request(app)
+      .post('/finance/reconciliation/ofx/approve')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        company_id: 'company-a',
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'maio.ofx',
+        source_file_size_bytes: 512,
+        source_file_hash: previewRes.body.source_file_hash,
+        ofx_text: ofxText,
+        approved_items: [{
+          draft_item_id: previewRes.body.items[0].id,
+          decision_type: 'new_transaction',
+          approved: true,
+          financial_category_id: categoryRes.body.id,
+          note: 'Tarifa bancaria duplicada'
+        }]
+      });
+    assert.notEqual(duplicateApproveRes.status, 201);
+    const statementRows = db.prepare('select id from financial_bank_statement_entry').all() as Array<{ id: string }>;
+    assert.equal(statementRows.length, 1);
   } finally {
     db.close();
     cleanupDbFiles(dbPath);
