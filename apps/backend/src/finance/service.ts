@@ -5008,12 +5008,55 @@ function summarizeOfxDraft(items: FinanceOfxPreviewDto['items']): FinanceOfxPrev
   );
 }
 
+const GENERIC_RECONCILIATION_MEMORY_TOKENS = new Set([
+  'pix',
+  'pagto',
+  'pagamento',
+  'pago',
+  'boleto',
+  'tarifa',
+  'ted',
+  'doc',
+  'transf',
+  'transferencia',
+  'recebimento',
+  'recebido',
+  'compra',
+  'cartao',
+  'debito',
+  'credito',
+  'servico',
+  'mensalidade',
+  'banco',
+  'bancaria',
+  'bancario'
+]);
+
+function reconciliationMemoryUsefulTokens(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token.length >= 3 && !GENERIC_RECONCILIATION_MEMORY_TOKENS.has(token));
+}
+
+function hasUsefulReconciliationMemoryPattern(value: string) {
+  return reconciliationMemoryUsefulTokens(value).length >= 2;
+}
+
 export function previewFinanceOfxReconciliation(input: FinanceOfxPreviewRequest): FinanceOfxPreviewDto {
   const normalizedOrganizationId = resolveOrganizationId(input.organization_id);
   readOrganizationRow(normalizedOrganizationId);
-  readFinanceAccountRow(normalizedOrganizationId, input.financial_account_id);
+  const account = readFinanceAccountRow(normalizedOrganizationId, input.financial_account_id);
   const company = resolveCompanyRow(input.company_id);
   const companyId = company?.id ?? null;
+  if (companyId && account.company_id && account.company_id !== companyId) {
+    throw new Error('Conta financeira não pertence à empresa selecionada.');
+  }
+
   const parsed = parseFinanceOfx({
     organization_id: normalizedOrganizationId,
     financial_account_id: input.financial_account_id,
@@ -5058,7 +5101,73 @@ function upsertReconciliationMemory(input: {
   financial_cost_center_id?: string | null;
   financial_payment_method_id?: string | null;
 }) {
+  if (!hasUsefulReconciliationMemoryPattern(input.normalized_pattern)) {
+    return;
+  }
+
   const nowIso = new Date().toISOString();
+  const existing = db.prepare(`
+    select
+      financial_entity_id,
+      financial_category_id,
+      financial_cost_center_id,
+      financial_payment_method_id
+    from financial_reconciliation_memory
+    where organization_id = ?
+      and financial_account_id = ?
+      and normalized_pattern = ?
+      and direction = ?
+    limit 1
+  `).get(
+    input.organization_id,
+    input.financial_account_id,
+    input.normalized_pattern,
+    input.direction
+  ) as {
+    financial_entity_id: string | null;
+    financial_category_id: string | null;
+    financial_cost_center_id: string | null;
+    financial_payment_method_id: string | null;
+  } | undefined;
+
+  const nextDimensions = {
+    financial_entity_id: input.financial_entity_id ?? null,
+    financial_category_id: input.financial_category_id ?? null,
+    financial_cost_center_id: input.financial_cost_center_id ?? null,
+    financial_payment_method_id: input.financial_payment_method_id ?? null
+  };
+  if (existing) {
+    const sameDimensions = (
+      existing.financial_entity_id === nextDimensions.financial_entity_id
+      && existing.financial_category_id === nextDimensions.financial_category_id
+      && existing.financial_cost_center_id === nextDimensions.financial_cost_center_id
+      && existing.financial_payment_method_id === nextDimensions.financial_payment_method_id
+    );
+    if (!sameDimensions) {
+      throw new Error('Memória financeira conflitante para este padrão.');
+    }
+
+    db.prepare(`
+      update financial_reconciliation_memory
+      set usage_count = usage_count + 1,
+          confidence_score = min(0.95, confidence_score + 0.05),
+          last_approved_at = ?,
+          updated_at = ?
+      where organization_id = ?
+        and financial_account_id = ?
+        and normalized_pattern = ?
+        and direction = ?
+    `).run(
+      nowIso,
+      nowIso,
+      input.organization_id,
+      input.financial_account_id,
+      input.normalized_pattern,
+      input.direction
+    );
+    return;
+  }
+
   db.prepare(`
     insert into financial_reconciliation_memory (
       id,
@@ -5077,16 +5186,6 @@ function upsertReconciliationMemory(input: {
       created_at,
       updated_at
     ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0.7, ?, ?, ?)
-    on conflict(organization_id, financial_account_id, normalized_pattern, direction) do update set
-      company_id = excluded.company_id,
-      financial_entity_id = excluded.financial_entity_id,
-      financial_category_id = excluded.financial_category_id,
-      financial_cost_center_id = excluded.financial_cost_center_id,
-      financial_payment_method_id = excluded.financial_payment_method_id,
-      usage_count = financial_reconciliation_memory.usage_count + 1,
-      confidence_score = min(0.95, financial_reconciliation_memory.confidence_score + 0.05),
-      last_approved_at = excluded.last_approved_at,
-      updated_at = excluded.updated_at
   `).run(
     uuid('fmem'),
     input.organization_id,
@@ -5104,12 +5203,100 @@ function upsertReconciliationMemory(input: {
   );
 }
 
-function requireApprovalTransactionId(value: string | null | undefined) {
-  const transactionId = value?.trim();
-  if (!transactionId) {
-    throw new Error('A aprovação precisa gerar ou informar um lançamento financeiro para conciliar.');
+function lineDirection(line: { amount_cents: number }) {
+  return line.amount_cents >= 0 ? 'inflow' : 'outflow';
+}
+
+function assertSameTarget(
+  requested: string | null | undefined,
+  expected: string | null | undefined,
+  label: string
+) {
+  if (!requested?.trim() || !expected?.trim() || requested.trim() !== expected.trim()) {
+    throw new Error(`Alvo de ${label} não confere com a prévia recalculada.`);
   }
-  return transactionId;
+  return expected.trim();
+}
+
+function hasExplicitNewTransactionFields(approval: FinanceOfxApproveInput['approved_items'][number]) {
+  return Boolean(
+    approval.financial_entity_id?.trim()
+    || approval.financial_category_id?.trim()
+    || approval.financial_cost_center_id?.trim()
+    || approval.financial_payment_method_id?.trim()
+  );
+}
+
+function validateApprovalDecision(
+  item: FinanceOfxPreviewDto['items'][number],
+  approval: FinanceOfxApproveInput['approved_items'][number]
+) {
+  if (item.decision_type === 'duplicate' || item.decision_type === 'invalid') {
+    throw new Error('Linhas duplicadas ou inválidas não podem ser aprovadas.');
+  }
+
+  if (item.decision_type === 'needs_review') {
+    if (approval.decision_type !== 'new_transaction' || !hasExplicitNewTransactionFields(approval)) {
+      throw new Error('Itens em revisão só podem virar novo lançamento com campos financeiros explícitos.');
+    }
+    return null;
+  }
+
+  if (approval.decision_type !== item.decision_type) {
+    throw new Error('Decisão aprovada não confere com a prévia recalculada.');
+  }
+
+  if (item.decision_type === 'payable_match') {
+    return assertSameTarget(approval.payable_id, item.target.payable_id, 'conta a pagar');
+  }
+  if (item.decision_type === 'receivable_match') {
+    return assertSameTarget(approval.receivable_id, item.target.receivable_id, 'conta a receber');
+  }
+  if (item.decision_type === 'ledger_match') {
+    return assertSameTarget(approval.financial_transaction_id, item.target.financial_transaction_id, 'lançamento financeiro');
+  }
+  return null;
+}
+
+function validateLedgerReconciliationTarget(input: {
+  organization_id: string;
+  company_id: string | null;
+  financial_account_id: string;
+  transaction_id: string;
+  line: FinanceOfxPreviewDto['items'][number]['line'];
+}) {
+  const row = readTransactionRow(input.transaction_id, {
+    organizationId: input.organization_id,
+    onlyActive: true
+  });
+  if (!row || row.status === 'canceled') {
+    throw new Error('Lançamento financeiro não encontrado para conciliação.');
+  }
+  const direction = lineDirection(input.line);
+  if ((direction === 'outflow' && row.kind !== 'expense') || (direction === 'inflow' && row.kind !== 'income')) {
+    throw new Error('Direção do lançamento financeiro não confere com o extrato.');
+  }
+  if (Math.abs(row.amount_cents) !== Math.abs(input.line.amount_cents)) {
+    throw new Error('Valor do lançamento financeiro não confere com o extrato.');
+  }
+  if (row.financial_account_id && row.financial_account_id !== input.financial_account_id) {
+    throw new Error('Conta do lançamento financeiro não confere com a conta do extrato.');
+  }
+  if (input.company_id && row.company_id && row.company_id !== input.company_id) {
+    throw new Error('Empresa do lançamento financeiro não confere com a prévia.');
+  }
+  const existingMatch = db.prepare(`
+    select id
+    from financial_reconciliation_match
+    where organization_id = ?
+      and financial_transaction_id = ?
+      and match_status = 'matched'
+    limit 1
+  `).get(input.organization_id, input.transaction_id) as { id: string } | undefined;
+  if (existingMatch) {
+    throw new Error('Lançamento financeiro já conciliado.');
+  }
+  return row;
 }
 
 export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): FinanceOfxApproveResultDto {
@@ -5120,10 +5307,27 @@ export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): 
   }
 
   const approvedBy = input.approved_by?.trim() || null;
-  const approvalByDraftId = new Map(input.approved_items.map((item) => [item.draft_item_id, item]));
-  const approvedDrafts = preview.items
-    .map((item) => ({ item, approval: approvalByDraftId.get(item.id) }))
-    .filter((pair) => pair.approval?.approved);
+  const draftById = new Map(preview.items.map((item) => [item.id, item]));
+  const seenDraftIds = new Set<string>();
+  for (const approval of input.approved_items) {
+    if (seenDraftIds.has(approval.draft_item_id)) {
+      throw new Error('Item de aprovação OFX duplicado.');
+    }
+    seenDraftIds.add(approval.draft_item_id);
+    if (!draftById.has(approval.draft_item_id)) {
+      throw new Error('Item de aprovação OFX não encontrado na prévia recalculada.');
+    }
+  }
+
+  const approvedDrafts = input.approved_items
+    .filter((approval) => approval.approved)
+    .map((approval) => ({
+      item: draftById.get(approval.draft_item_id)!,
+      approval
+    }));
+  if (approvedDrafts.length === 0) {
+    throw new Error('Nenhuma linha OFX aprovada para importar.');
+  }
 
   return db.transaction(() => {
     const importJob = createFinanceImportJob({
@@ -5145,16 +5349,11 @@ export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): 
     const transactions: FinanceTransactionDto[] = [];
     const matches: FinanceReconciliationMatchDto[] = [];
     const decisionSummary: Record<string, number> = {};
+    let approvedInflowCents = 0;
+    let approvedOutflowCents = 0;
 
     for (const { item, approval } of approvedDrafts) {
-      if (!approval) continue;
-      if (item.decision_type === 'duplicate' || item.decision_type === 'invalid') {
-        throw new Error('Linhas duplicadas ou inválidas não podem ser aprovadas.');
-      }
-      if (approval.decision_type === 'duplicate' || approval.decision_type === 'invalid' || approval.decision_type === 'needs_review') {
-        throw new Error('Escolha uma decisão conciliável para aprovar a linha OFX.');
-      }
-
+      const validatedTargetId = validateApprovalDecision(item, approval);
       const line = item.line;
       const duplicateHashes = listExistingStatementDedupeHashes(
         normalizedOrganizationId,
@@ -5207,10 +5406,26 @@ export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): 
         transactionId = transaction.id;
         transactions.push(transaction);
       } else if (approval.decision_type === 'ledger_match') {
-        transactionId = requireApprovalTransactionId(approval.financial_transaction_id ?? item.target.financial_transaction_id);
+        transactionId = validatedTargetId ?? '';
+        validateLedgerReconciliationTarget({
+          organization_id: normalizedOrganizationId,
+          company_id: preview.company_id,
+          financial_account_id: preview.financial_account_id,
+          transaction_id: transactionId,
+          line
+        });
       } else if (approval.decision_type === 'payable_match') {
-        const payable = readFinancePayable(normalizedOrganizationId, requireApprovalTransactionId(approval.payable_id ?? item.target.payable_id));
+        if (lineDirection(line) !== 'outflow') {
+          throw new Error('Conta a pagar só pode conciliar saída de extrato.');
+        }
+        const payable = readFinancePayable(normalizedOrganizationId, validatedTargetId ?? '');
+        if (preview.company_id && payable.company_id && payable.company_id !== preview.company_id) {
+          throw new Error('Empresa da conta a pagar não confere com a prévia.');
+        }
         const remainingAmount = Math.max(0, payable.amount_cents - payable.paid_amount_cents);
+        if (Math.abs(line.amount_cents) > remainingAmount) {
+          throw new Error('Valor do extrato excede o saldo da conta a pagar.');
+        }
         const settled = Math.abs(line.amount_cents) < remainingAmount
           ? partiallySettleFinancePayable({
             organization_id: normalizedOrganizationId,
@@ -5227,12 +5442,24 @@ export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): 
             note: approval.note ?? null,
             created_by: approvedBy
           });
-        transactionId = requireApprovalTransactionId(settled.financial_transaction_id);
+        if (!settled.financial_transaction_id) {
+          throw new Error('Baixa de conta a pagar não gerou lançamento financeiro para conciliar.');
+        }
+        transactionId = settled.financial_transaction_id;
         const transaction = readTransactionRow(transactionId, { organizationId: normalizedOrganizationId, onlyActive: true });
         if (transaction) transactions.push(mapTransactionRow(transaction));
       } else {
-        const receivable = readFinanceReceivable(normalizedOrganizationId, requireApprovalTransactionId(approval.receivable_id ?? item.target.receivable_id));
+        if (lineDirection(line) !== 'inflow') {
+          throw new Error('Conta a receber só pode conciliar entrada de extrato.');
+        }
+        const receivable = readFinanceReceivable(normalizedOrganizationId, validatedTargetId ?? '');
+        if (preview.company_id && receivable.company_id && receivable.company_id !== preview.company_id) {
+          throw new Error('Empresa da conta a receber não confere com a prévia.');
+        }
         const remainingAmount = Math.max(0, receivable.amount_cents - receivable.received_amount_cents);
+        if (Math.abs(line.amount_cents) > remainingAmount) {
+          throw new Error('Valor do extrato excede o saldo da conta a receber.');
+        }
         const settled = Math.abs(line.amount_cents) < remainingAmount
           ? partiallySettleFinanceReceivable({
             organization_id: normalizedOrganizationId,
@@ -5249,7 +5476,10 @@ export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): 
             note: approval.note ?? null,
             created_by: approvedBy
           });
-        transactionId = requireApprovalTransactionId(settled.financial_transaction_id);
+        if (!settled.financial_transaction_id) {
+          throw new Error('Baixa de conta a receber não gerou lançamento financeiro para conciliar.');
+        }
+        transactionId = settled.financial_transaction_id;
         const transaction = readTransactionRow(transactionId, { organizationId: normalizedOrganizationId, onlyActive: true });
         if (transaction) transactions.push(mapTransactionRow(transaction));
       }
@@ -5280,6 +5510,11 @@ export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): 
       }
 
       decisionSummary[approval.decision_type] = (decisionSummary[approval.decision_type] ?? 0) + 1;
+      if (line.amount_cents >= 0) {
+        approvedInflowCents += line.amount_cents;
+      } else {
+        approvedOutflowCents += Math.abs(line.amount_cents);
+      }
     }
 
     const nowIso = new Date().toISOString();
@@ -5316,8 +5551,8 @@ export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): 
       preview.summary.total_rows,
       matches.length,
       Math.max(0, preview.summary.total_rows - matches.length),
-      preview.summary.inflow_cents,
-      preview.summary.outflow_cents,
+      approvedInflowCents,
+      approvedOutflowCents,
       JSON.stringify(decisionSummary),
       nowIso
     );
