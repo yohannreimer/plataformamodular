@@ -275,6 +275,7 @@ function scorePayableCandidate(
   payable: FinancePayableDto
 ): ScoredCandidate<FinancePayableDto> | null {
   if (!SETTLEMENT_STATUSES.has(payable.status)) return null;
+  if (payable.financial_account_id && payable.financial_account_id !== financialAccountId) return null;
   const amount = Math.abs(line.amount_cents);
   const outstanding = outstandingPayableAmount(payable);
   if (amount > outstanding) return null;
@@ -301,6 +302,7 @@ function scoreReceivableCandidate(
   receivable: FinanceReceivableDto
 ): ScoredCandidate<FinanceReceivableDto> | null {
   if (!SETTLEMENT_STATUSES.has(receivable.status)) return null;
+  if (receivable.financial_account_id && receivable.financial_account_id !== financialAccountId) return null;
   const amount = Math.abs(line.amount_cents);
   const outstanding = outstandingReceivableAmount(receivable);
   if (amount > outstanding) return null;
@@ -327,6 +329,7 @@ function scoreTransactionCandidate(
   transaction: FinanceTransactionDto
 ): ScoredCandidate<FinanceTransactionDto> | null {
   if (transaction.is_deleted || transaction.status === 'canceled') return null;
+  if (transaction.financial_account_id && transaction.financial_account_id !== financialAccountId) return null;
   if (transactionDirection(transaction) !== lineDirection(line)) return null;
   if (Math.abs(transaction.amount_cents) !== Math.abs(line.amount_cents)) return null;
   return {

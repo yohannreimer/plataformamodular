@@ -5047,12 +5047,82 @@ function hasUsefulReconciliationMemoryPattern(value: string) {
   return reconciliationMemoryUsefulTokens(value).length >= 2;
 }
 
+function buildOfxDuplicateHashes(input: {
+  organization_id: string;
+  financial_account_id: string;
+  lines: FinanceOfxPreviewDto['items'][number]['line'][];
+}) {
+  const hashes = input.lines.map((line) => line.dedupe_hash);
+  const persistedHashes = listExistingStatementDedupeHashes(
+    input.organization_id,
+    input.financial_account_id,
+    hashes
+  );
+  const counts = new Map<string, number>();
+  for (const hash of hashes) {
+    counts.set(hash, (counts.get(hash) ?? 0) + 1);
+  }
+  for (const [hash, count] of counts) {
+    if (count > 1) {
+      persistedHashes.add(hash);
+    }
+  }
+  return persistedHashes;
+}
+
+function readDuplicateOfxImportJob(input: {
+  organization_id: string;
+  company_id: string | null;
+  source_file_name: string;
+  source_file_size_bytes: number;
+  source_file_hash: string;
+}) {
+  return db.prepare(`
+    select id
+    from financial_import_job
+    where organization_id = ?
+      and import_type = 'OFX'
+      and status = 'completed'
+      and source_file_name = ?
+      and source_file_size_bytes = ?
+      and source_file_hash = ?
+      and (
+        (? is null and company_id is null)
+        or company_id = ?
+      )
+    limit 1
+  `).get(
+    input.organization_id,
+    input.source_file_name.trim(),
+    Math.max(0, Math.trunc(input.source_file_size_bytes)),
+    input.source_file_hash.trim(),
+    input.company_id,
+    input.company_id
+  ) as { id: string } | undefined;
+}
+
+function assertNoDuplicateOfxImportJob(input: {
+  organization_id: string;
+  company_id: string | null;
+  source_file_name: string;
+  source_file_size_bytes: number;
+  source_file_hash: string;
+}) {
+  if (readDuplicateOfxImportJob(input)) {
+    throw new Error('Arquivo OFX já importado para esta empresa.');
+  }
+}
+
+function companyMatchesResource(resourceCompanyId: string | null, companyId: string | null) {
+  return !companyId || !resourceCompanyId || resourceCompanyId === companyId;
+}
+
 export function previewFinanceOfxReconciliation(input: FinanceOfxPreviewRequest): FinanceOfxPreviewDto {
   const normalizedOrganizationId = resolveOrganizationId(input.organization_id);
   readOrganizationRow(normalizedOrganizationId);
   const account = readFinanceAccountRow(normalizedOrganizationId, input.financial_account_id);
   const company = resolveCompanyRow(input.company_id);
-  const companyId = company?.id ?? null;
+  const companyId = company?.id ?? account.company_id ?? null;
   if (companyId && account.company_id && account.company_id !== companyId) {
     throw new Error('Conta financeira não pertence à empresa selecionada.');
   }
@@ -5067,15 +5137,24 @@ export function previewFinanceOfxReconciliation(input: FinanceOfxPreviewRequest)
   const items = buildFinanceReconciliationDraftItems({
     financial_account_id: input.financial_account_id,
     lines: parsed.lines,
-    payables: listFinancePayables(normalizedOrganizationId, companyId).payables,
-    receivables: listFinanceReceivables(normalizedOrganizationId, companyId).receivables,
-    transactions: listFinanceTransactions(normalizedOrganizationId).transactions,
+    payables: listFinancePayables(normalizedOrganizationId, companyId).payables
+      .filter((payable) => (
+        companyMatchesResource(payable.company_id, companyId)
+        && (!payable.financial_account_id || payable.financial_account_id === input.financial_account_id)
+      )),
+    receivables: listFinanceReceivables(normalizedOrganizationId, companyId).receivables
+      .filter((receivable) => (
+        companyMatchesResource(receivable.company_id, companyId)
+        && (!receivable.financial_account_id || receivable.financial_account_id === input.financial_account_id)
+      )),
+    transactions: listFinanceTransactions(normalizedOrganizationId).transactions
+      .filter((transaction) => !transaction.financial_account_id || transaction.financial_account_id === input.financial_account_id),
     memories: readReconciliationMemories(normalizedOrganizationId, input.financial_account_id, companyId),
-    duplicateHashes: listExistingStatementDedupeHashes(
-      normalizedOrganizationId,
-      input.financial_account_id,
-      parsed.lines.map((line) => line.dedupe_hash)
-    )
+    duplicateHashes: buildOfxDuplicateHashes({
+      organization_id: normalizedOrganizationId,
+      financial_account_id: input.financial_account_id,
+      lines: parsed.lines
+    })
   });
 
   return {
@@ -5328,8 +5407,23 @@ export function approveFinanceOfxReconciliation(input: FinanceOfxApproveInput): 
   if (approvedDrafts.length === 0) {
     throw new Error('Nenhuma linha OFX aprovada para importar.');
   }
+  assertNoDuplicateOfxImportJob({
+    organization_id: normalizedOrganizationId,
+    company_id: preview.company_id,
+    source_file_name: preview.source_file_name,
+    source_file_size_bytes: input.source_file_size_bytes,
+    source_file_hash: preview.source_file_hash
+  });
 
   return db.transaction(() => {
+    assertNoDuplicateOfxImportJob({
+      organization_id: normalizedOrganizationId,
+      company_id: preview.company_id,
+      source_file_name: preview.source_file_name,
+      source_file_size_bytes: input.source_file_size_bytes,
+      source_file_hash: preview.source_file_hash
+    });
+
     const importJob = createFinanceImportJob({
       organization_id: normalizedOrganizationId,
       company_id: preview.company_id,

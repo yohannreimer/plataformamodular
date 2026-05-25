@@ -6336,6 +6336,29 @@ test('OFX preview and approval creates settled transaction, match, memory and bl
     assert.equal(duplicatePreviewRes.status, 200);
     assert.equal(duplicatePreviewRes.body.items[0].decision_type, 'duplicate');
 
+    const duplicateFileApproveRes = await request(app)
+      .post('/finance/reconciliation/ofx/approve')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        company_id: 'company-a',
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'maio.ofx',
+        source_file_size_bytes: 512,
+        source_file_hash: previewRes.body.source_file_hash,
+        ofx_text: ofxText,
+        approved_items: [{
+          draft_item_id: previewRes.body.items[1].id,
+          decision_type: 'new_transaction',
+          approved: true,
+          financial_category_id: categoryRes.body.id,
+          note: 'Tarifa bancaria'
+        }]
+      });
+    assert.notEqual(duplicateFileApproveRes.status, 201);
+    assert.match(duplicateFileApproveRes.body.message, /OFX já importado|Linha OFX já importada/);
+    assert.equal(db.prepare('select count(*) as count from financial_import_job').get().count, 1);
+    assert.equal(db.prepare('select count(*) as count from financial_reconciliation_batch').get().count, 1);
+
     const duplicateApproveRes = await request(app)
       .post('/finance/reconciliation/ofx/approve')
       .set('Authorization', `Bearer ${token}`)
@@ -6389,6 +6412,17 @@ test('OFX approval rejects unsafe client decisions before writes', async () => {
       .send({ name: 'Banco Segurança OFX', kind: 'bank' });
     assert.equal(accountRes.status, 201, JSON.stringify(accountRes.body));
 
+    createInternalUser({
+      username: 'finance.ofx.reader',
+      display_name: 'Finance OFX Reader',
+      password: 'Senha#123',
+      role: 'supremo',
+      permissions: ['finance.read']
+    });
+    const readerLoginRes = await request(app).post('/auth/login').send({ username: 'finance.ofx.reader', password: 'Senha#123' });
+    assert.equal(readerLoginRes.status, 200);
+    const readerToken = readerLoginRes.body.token as string;
+
     const otherAccountId = 'account-company-b-ofx';
     db.prepare(`
       insert into financial_account (
@@ -6426,6 +6460,22 @@ test('OFX approval rejects unsafe client decisions before writes', async () => {
     assert.notEqual(mismatchPreviewRes.status, 200);
 
     const ofxText = `<OFX><BANKTRANLIST><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-22.00<FITID>safety-1<MEMO>ATLAS CLOUD</STMTTRN></BANKTRANLIST></OFX>`;
+    const duplicateInFileText = `<OFX><BANKTRANLIST><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-22.00<FITID>same-line<MEMO>ATLAS CLOUD</STMTTRN><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-22.00<FITID>same-line<MEMO>ATLAS CLOUD</STMTTRN></BANKTRANLIST></OFX>`;
+    const duplicateInFilePreviewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'duplicadas.ofx',
+        source_file_size_bytes: 256,
+        ofx_text: duplicateInFileText
+      });
+    assert.equal(duplicateInFilePreviewRes.status, 200, JSON.stringify(duplicateInFilePreviewRes.body));
+    assert.equal(duplicateInFilePreviewRes.body.items.length, 2);
+    assert.equal(duplicateInFilePreviewRes.body.items[0].decision_type, 'duplicate');
+    assert.equal(duplicateInFilePreviewRes.body.items[1].decision_type, 'duplicate');
+    assert.equal(duplicateInFilePreviewRes.body.summary.duplicate_count, 2);
+
     const previewRes = await request(app)
       .post('/finance/reconciliation/ofx/preview')
       .set('Authorization', `Bearer ${token}`)
@@ -6437,6 +6487,36 @@ test('OFX approval rejects unsafe client decisions before writes', async () => {
       });
     assert.equal(previewRes.status, 200, JSON.stringify(previewRes.body));
     assert.equal(previewRes.body.items[0].decision_type, 'needs_review');
+
+    const readerPreviewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${readerToken}`)
+      .send({
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'reader.ofx',
+        source_file_size_bytes: 256,
+        ofx_text: ofxText
+      });
+    assert.equal(readerPreviewRes.status, 200, JSON.stringify(readerPreviewRes.body));
+
+    const readerApproveRes = await request(app)
+      .post('/finance/reconciliation/ofx/approve')
+      .set('Authorization', `Bearer ${readerToken}`)
+      .send({
+        financial_account_id: accountRes.body.id,
+        source_file_name: 'reader.ofx',
+        source_file_size_bytes: 256,
+        source_file_hash: readerPreviewRes.body.source_file_hash,
+        ofx_text: ofxText,
+        approved_items: [{
+          draft_item_id: readerPreviewRes.body.items[0].id,
+          decision_type: 'new_transaction',
+          approved: true,
+          financial_category_id: 'category-client-picked'
+        }]
+      });
+    assert.notEqual(readerApproveRes.status, 201);
+    assert.equal(db.prepare('select count(*) as count from financial_import_job').get().count, 0);
 
     const unknownApproveRes = await request(app)
       .post('/finance/reconciliation/ofx/approve')
@@ -6512,8 +6592,8 @@ test('OFX approval rejects unsafe client decisions before writes', async () => {
         ofx_text: ofxText
       });
     assert.equal(crossAccountPayablePreviewRes.status, 200, JSON.stringify(crossAccountPayablePreviewRes.body));
-    assert.equal(crossAccountPayablePreviewRes.body.items[0].decision_type, 'payable_match');
-    assert.equal(crossAccountPayablePreviewRes.body.items[0].target.payable_id, crossAccountPayableRes.body.id);
+    assert.equal(crossAccountPayablePreviewRes.body.items[0].decision_type, 'needs_review');
+    assert.equal(crossAccountPayablePreviewRes.body.items[0].target.payable_id, undefined);
 
     const crossAccountPayableApproveRes = await request(app)
       .post('/finance/reconciliation/ofx/approve')
@@ -6534,6 +6614,69 @@ test('OFX approval rejects unsafe client decisions before writes', async () => {
     assert.notEqual(crossAccountPayableApproveRes.status, 201);
     assert.equal(db.prepare('select count(*) as count from financial_bank_statement_entry').get().count, 0);
     db.prepare("update financial_payable set status = 'canceled' where id = ?").run(crossAccountPayableRes.body.id);
+
+    const scopedAccountId = 'account-company-a-ofx';
+    db.prepare(`
+      insert into financial_account (
+        id,
+        organization_id,
+        company_id,
+        name,
+        kind,
+        currency,
+        is_active,
+        created_at,
+        updated_at
+      ) values (?, ?, ?, ?, ?, ?, 1, ?, ?)
+    `).run(
+      scopedAccountId,
+      'org-holand',
+      'company-a',
+      'Banco Empresa A',
+      'bank',
+      'BRL',
+      '2026-05-24T12:00:00.000Z',
+      '2026-05-24T12:00:00.000Z'
+    );
+    db.prepare(`
+      insert into financial_payable (
+        id,
+        organization_id,
+        company_id,
+        description,
+        amount_cents,
+        paid_amount_cents,
+        status,
+        due_date,
+        source,
+        created_at,
+        updated_at
+      ) values (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+    `).run(
+      'payable-company-b-atlas',
+      'org-holand',
+      'company-b',
+      'ATLAS CLOUD',
+      2200,
+      'open',
+      '2026-05-24',
+      'manual',
+      '2026-05-24T12:00:00.000Z',
+      '2026-05-24T12:00:00.000Z'
+    );
+    const omittedCompanyPreviewRes = await request(app)
+      .post('/finance/reconciliation/ofx/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        financial_account_id: scopedAccountId,
+        source_file_name: 'empresa-omitida.ofx',
+        source_file_size_bytes: 256,
+        ofx_text: ofxText
+      });
+    assert.equal(omittedCompanyPreviewRes.status, 200, JSON.stringify(omittedCompanyPreviewRes.body));
+    assert.equal(omittedCompanyPreviewRes.body.company_id, 'company-a');
+    assert.equal(omittedCompanyPreviewRes.body.items[0].decision_type, 'needs_review');
+    db.prepare("update financial_payable set status = 'canceled' where id = ?").run('payable-company-b-atlas');
 
     const ledgerARes = await request(app)
       .post('/finance/transactions')
@@ -6673,8 +6816,8 @@ test('OFX approval rejects receivable account mismatch before writes', async () 
         ofx_text: ofxText
       });
     assert.equal(previewRes.status, 200, JSON.stringify(previewRes.body));
-    assert.equal(previewRes.body.items[0].decision_type, 'receivable_match');
-    assert.equal(previewRes.body.items[0].target.receivable_id, receivableRes.body.id);
+    assert.equal(previewRes.body.items[0].decision_type, 'needs_review');
+    assert.equal(previewRes.body.items[0].target.receivable_id, undefined);
 
     const approveRes = await request(app)
       .post('/finance/reconciliation/ofx/approve')
