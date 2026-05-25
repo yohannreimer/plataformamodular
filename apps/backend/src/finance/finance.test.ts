@@ -743,11 +743,12 @@ test('initDb preserva colunas OFX ao reconstruir tabelas financeiras legadas', a
     ).get('legacy-entry-ofx') as { dedupe_hash: string | null } | undefined;
     assert.equal(statement?.dedupe_hash, 'dedupe-hash-123');
 
-    db.prepare(`
+    const dedupeLookup = db.prepare(`
       select id
       from financial_bank_statement_entry
       where organization_id = ? and financial_account_id = ? and dedupe_hash = ?
-    `).get('org-holand', 'legacy-account', 'dedupe-hash-123');
+    `).get('org-holand', 'legacy-account', 'dedupe-hash-123') as { id: string } | undefined;
+    assert.equal(dedupeLookup?.id, 'legacy-entry-ofx');
   } finally {
     db.close();
     cleanupDbFiles(dbPath);

@@ -358,6 +358,7 @@ const recurringRuleUpdateSchema = z.object({
 const importJobCreateSchema = z.object({
   import_type: z.string().trim().min(2).max(64),
   source_file_name: z.string().trim().min(2).max(255),
+  source_file_hash: z.string().trim().max(128).nullable().optional(),
   source_file_mime_type: z.string().trim().max(120).nullable().optional(),
   source_file_size_bytes: z.number().int().min(0).optional(),
   status: z.enum(importJobStatusValues).optional(),
@@ -375,6 +376,7 @@ const statementEntryCreateSchema = z.object({
   posted_at: isoDateSchema.nullable().optional(),
   amount_cents: z.number().int(),
   description: z.string().trim().min(2).max(320),
+  dedupe_hash: z.string().trim().max(128).nullable().optional(),
   reference_code: z.string().trim().max(120).nullable().optional(),
   balance_cents: z.number().int().nullable().optional(),
   source: z.string().trim().min(2).max(40).optional(),
