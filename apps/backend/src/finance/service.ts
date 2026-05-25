@@ -1,6 +1,7 @@
 import { db, uuid } from '../db.js';
 import { getFinanceEntityDefaultProfile } from './entities.js';
 import { computeViews } from './ledger.js';
+import type { FinanceReconciliationMemoryCandidate } from './reconciliationDraft.js';
 import type {
   CreateFinanceAccountInput,
   CreateFinanceAttachmentInput,
@@ -3834,6 +3835,49 @@ function mapReconciliationRow(row: {
     created_at: row.created_at,
     updated_at: row.updated_at
   };
+}
+
+export function listExistingStatementDedupeHashes(organizationId: string, financialAccountId: string, hashes: string[]) {
+  if (hashes.length === 0) return new Set<string>();
+  const placeholders = hashes.map(() => '?').join(', ');
+  const rows = db.prepare(`
+    select dedupe_hash
+    from financial_bank_statement_entry
+    where organization_id = ?
+      and financial_account_id = ?
+      and dedupe_hash in (${placeholders})
+  `).all(organizationId, financialAccountId, ...hashes) as Array<{ dedupe_hash: string | null }>;
+  return new Set(rows.map((row) => row.dedupe_hash).filter((hash): hash is string => Boolean(hash)));
+}
+
+export function listFinanceReconciliationMemory(
+  organizationId: string,
+  financialAccountId: string
+): FinanceReconciliationMemoryCandidate[] {
+  return db.prepare(`
+    select
+      frm.id,
+      frm.normalized_pattern,
+      frm.direction,
+      frm.financial_entity_id,
+      coalesce(fe.trade_name, fe.legal_name) as financial_entity_name,
+      frm.financial_category_id,
+      fc.name as financial_category_name,
+      frm.financial_cost_center_id,
+      fcc.name as financial_cost_center_name,
+      frm.financial_payment_method_id,
+      fpm.name as financial_payment_method_name,
+      frm.usage_count,
+      frm.confidence_score
+    from financial_reconciliation_memory frm
+    left join financial_entity fe on fe.organization_id = frm.organization_id and fe.id = frm.financial_entity_id
+    left join financial_category fc on fc.organization_id = frm.organization_id and fc.id = frm.financial_category_id
+    left join financial_cost_center fcc on fcc.organization_id = frm.organization_id and fcc.id = frm.financial_cost_center_id
+    left join financial_payment_method fpm on fpm.organization_id = frm.organization_id and fpm.id = frm.financial_payment_method_id
+    where frm.organization_id = ?
+      and frm.financial_account_id = ?
+    order by frm.usage_count desc, frm.updated_at desc
+  `).all(organizationId, financialAccountId) as FinanceReconciliationMemoryCandidate[];
 }
 
 function getDateDifferenceInDays(left: string, right: string) {
