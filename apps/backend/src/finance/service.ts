@@ -62,6 +62,7 @@ import type {
   FinanceOfxPreviewDto,
   FinanceOfxPreviewRequest,
   FinancePartialSettlementInput,
+  FinancePaymentMethodDto,
   FinanceScheduleOperationInput,
   FinanceTransactionDto,
   FinanceTransactionRow,
@@ -4975,8 +4976,46 @@ function readReconciliationMemories(
   `).all(organizationId, financialAccountId, companyId, companyId) as FinanceReconciliationMemoryCandidate[];
 }
 
-function summarizeOfxDraft(items: FinanceOfxPreviewDto['items']): FinanceOfxPreviewDto['summary'] {
-  return items.reduce(
+function listActiveFinancePaymentMethodCandidates(organizationId: string) {
+  const rows = db.prepare(`
+    select
+      id,
+      name,
+      kind,
+      is_active
+    from financial_payment_method
+    where organization_id = ?
+      and is_active = 1
+    order by name collate nocase asc, created_at desc
+  `).all(organizationId) as Array<Pick<FinancePaymentMethodDto, 'id' | 'name' | 'kind'> & { is_active: number }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    kind: row.kind,
+    is_active: Number(row.is_active) === 1
+  }));
+}
+
+function summarizeOfxDraft(
+  items: FinanceOfxPreviewDto['items'],
+  statementBalance: ReturnType<typeof parseFinanceOfx>['statement_balance']
+): FinanceOfxPreviewDto['summary'] {
+  const initialSummary: FinanceOfxPreviewDto['summary'] = {
+    total_rows: 0,
+    ready_count: 0,
+    review_count: 0,
+    blocked_count: 0,
+    duplicate_count: 0,
+    inflow_cents: 0,
+    outflow_cents: 0,
+    net_movement_cents: 0,
+    opening_balance_cents: null,
+    ending_balance_cents: null,
+    ending_balance_as_of: null
+  };
+
+  const summary = items.reduce(
     (summary, item) => {
       summary.total_rows += 1;
       if (item.decision_type === 'duplicate') {
@@ -4998,16 +5037,15 @@ function summarizeOfxDraft(items: FinanceOfxPreviewDto['items']): FinanceOfxPrev
       }
       return summary;
     },
-    {
-      total_rows: 0,
-      ready_count: 0,
-      review_count: 0,
-      blocked_count: 0,
-      duplicate_count: 0,
-      inflow_cents: 0,
-      outflow_cents: 0
-    }
+    initialSummary
   );
+  summary.net_movement_cents = summary.inflow_cents - summary.outflow_cents;
+  summary.ending_balance_cents = statementBalance?.balance_cents ?? null;
+  summary.ending_balance_as_of = statementBalance?.as_of ?? null;
+  summary.opening_balance_cents = statementBalance
+    ? statementBalance.balance_cents - summary.net_movement_cents
+    : null;
+  return summary;
 }
 
 const GENERIC_RECONCILIATION_MEMORY_TOKENS = new Set([
@@ -5195,6 +5233,7 @@ export function previewFinanceOfxReconciliation(input: FinanceOfxPreviewRequest)
         && (!transaction.financial_account_id || transaction.financial_account_id === input.financial_account_id)
       )),
     memories: readReconciliationMemories(normalizedOrganizationId, input.financial_account_id, companyId),
+    paymentMethods: listActiveFinancePaymentMethodCandidates(normalizedOrganizationId),
     duplicateHashes: buildOfxDuplicateHashes({
       organization_id: normalizedOrganizationId,
       financial_account_id: input.financial_account_id,
@@ -5209,7 +5248,7 @@ export function previewFinanceOfxReconciliation(input: FinanceOfxPreviewRequest)
     source_file_name: input.source_file_name.trim(),
     source_file_hash: parsed.source_file_hash,
     generated_at: new Date().toISOString(),
-    summary: summarizeOfxDraft(items),
+    summary: summarizeOfxDraft(items, parsed.statement_balance),
     items
   };
 }

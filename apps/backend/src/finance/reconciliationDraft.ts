@@ -1,6 +1,7 @@
 import type {
   FinanceOfxLineDto,
   FinancePayableDto,
+  FinancePaymentMethodDto,
   FinanceReceivableDto,
   FinanceReconciliationDraftItemDto,
   FinanceReconciliationSuggestionReasonDto,
@@ -32,6 +33,7 @@ type BuildFinanceReconciliationDraftItemsInput = {
   receivables: FinanceReceivableDto[];
   transactions: FinanceTransactionDto[];
   memories: FinanceReconciliationMemoryCandidate[];
+  paymentMethods?: Array<Pick<FinancePaymentMethodDto, 'id' | 'name' | 'kind' | 'is_active'>>;
   duplicateHashes: Set<string>;
 };
 
@@ -99,7 +101,9 @@ export function buildFinanceReconciliationDraftItems(
     consumedReceivableIds: new Set(),
     consumedTransactionIds: new Set()
   };
-  return input.lines.map((line) => buildDraftItem(input, line, state));
+  return input.lines
+    .map((line) => buildDraftItem(input, line, state))
+    .map((item) => applyInferredPaymentMethod(item, input.paymentMethods ?? []));
 }
 
 function buildDraftItem(
@@ -254,6 +258,98 @@ function draftItem(params: {
 
 function lineDirection(line: Pick<FinanceOfxLineDto, 'amount_cents'>): ReconciliationDirection {
   return line.amount_cents >= 0 ? 'inflow' : 'outflow';
+}
+
+function applyInferredPaymentMethod(
+  item: FinanceReconciliationDraftItemDto,
+  paymentMethods: Array<Pick<FinancePaymentMethodDto, 'id' | 'name' | 'kind' | 'is_active'>>
+): FinanceReconciliationDraftItemDto {
+  if (
+    item.proposed.financial_payment_method_id
+    || item.decision_type === 'invalid'
+  ) {
+    return item;
+  }
+
+  const inferredPaymentMethod = inferPaymentMethodFromOfxLine(item.line, paymentMethods);
+  if (!inferredPaymentMethod) {
+    return item;
+  }
+
+  return {
+    ...item,
+    proposed: {
+      ...item.proposed,
+      financial_payment_method_id: inferredPaymentMethod.id,
+      financial_payment_method_name: inferredPaymentMethod.name
+    }
+  };
+}
+
+function inferPaymentMethodFromOfxLine(
+  line: FinanceOfxLineDto,
+  paymentMethods: Array<Pick<FinancePaymentMethodDto, 'id' | 'name' | 'kind' | 'is_active'>>
+) {
+  const activePaymentMethods = paymentMethods.filter((paymentMethod) => paymentMethod.is_active);
+  if (activePaymentMethods.length === 0) return null;
+
+  const text = `${line.normalized_description} ${normalizePaymentMethodText(line.description)}`;
+  const intent = paymentMethodIntentFromText(text);
+  if (!intent) return null;
+
+  return activePaymentMethods
+    .map((paymentMethod) => ({
+      paymentMethod,
+      score: scorePaymentMethodIntent(paymentMethod, intent)
+    }))
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score || left.paymentMethod.name.localeCompare(right.paymentMethod.name, 'pt-BR'))[0]
+    ?.paymentMethod ?? null;
+}
+
+function paymentMethodIntentFromText(text: string): { kind: FinancePaymentMethodDto['kind']; aliases: string[] } | null {
+  if (/\b(debito|débito)\b/.test(text)) {
+    return { kind: 'card', aliases: ['debito'] };
+  }
+  if (/\b(cartao|cartão|credito|crédito|fatura)\b/.test(text)) {
+    return { kind: 'card', aliases: ['credito', 'cartao', 'cartao credito', 'fatura'] };
+  }
+  if (/\bpix\b/.test(text)) {
+    return { kind: 'pix', aliases: ['pix'] };
+  }
+  if (/\b(boleto|linha digitavel)\b/.test(text)) {
+    return { kind: 'boleto', aliases: ['boleto'] };
+  }
+  if (/\b(dinheiro|especie|cash)\b/.test(text)) {
+    return { kind: 'cash', aliases: ['dinheiro', 'especie', 'cash'] };
+  }
+  if (/\b(transferencia|transferência|transfer|transf|ted|doc|tef)\b/.test(text)) {
+    return { kind: 'transfer', aliases: ['transferencia', 'transfer', 'transf', 'ted', 'doc', 'tef'] };
+  }
+  return null;
+}
+
+function scorePaymentMethodIntent(
+  paymentMethod: Pick<FinancePaymentMethodDto, 'name' | 'kind'>,
+  intent: { kind: FinancePaymentMethodDto['kind']; aliases: string[] }
+) {
+  const name = normalizePaymentMethodText(paymentMethod.name);
+  let score = paymentMethod.kind === intent.kind ? 80 : 0;
+  for (const alias of intent.aliases) {
+    if (name.includes(alias)) {
+      score += 40;
+    }
+  }
+  return score;
+}
+
+function normalizePaymentMethodText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
 
 function transactionDirection(transaction: Pick<FinanceTransactionDto, 'kind'>): ReconciliationDirection | null {

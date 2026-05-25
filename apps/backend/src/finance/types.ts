@@ -1255,6 +1255,10 @@ export type FinanceOfxPreviewDto = {
     duplicate_count: number;
     inflow_cents: number;
     outflow_cents: number;
+    net_movement_cents: number;
+    opening_balance_cents: number | null;
+    ending_balance_cents: number | null;
+    ending_balance_as_of: string | null;
   };
   items: FinanceReconciliationDraftItemDto[];
 };

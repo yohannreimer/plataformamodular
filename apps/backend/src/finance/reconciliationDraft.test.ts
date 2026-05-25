@@ -678,3 +678,86 @@ test('draft aceita memória específica atlas cloud sem token genérico', () => 
   assert.equal(items[0].decision_type, 'new_transaction');
   assert.equal(items[0].proposed.financial_entity_id, 'entity-atlas');
 });
+
+test('draft infere forma de pagamento pela descrição OFX quando não há proposta anterior', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [
+      ofxLineFixture({
+        description: 'Compra no débito - PISTA 3',
+        normalized_description: 'compra no debito pista 3',
+        amount_cents: -570
+      }),
+      ofxLineFixture({
+        id: 'ofx-line-pix',
+        description: 'Transferência enviada pelo Pix - Fornecedor',
+        normalized_description: 'transferencia enviada pelo pix fornecedor',
+        amount_cents: -12000,
+        dedupe_hash: 'hash-pix'
+      }),
+      ofxLineFixture({
+        id: 'ofx-line-card',
+        description: 'Valor adicionado na conta por cartão de crédito - Valor adicionado para Pix no Crédito',
+        normalized_description: 'valor adicionado na conta por cartao de credito valor adicionado para pix no credito',
+        amount_cents: 11399,
+        dedupe_hash: 'hash-card'
+      })
+    ],
+    payables: [],
+    receivables: [],
+    transactions: [],
+    duplicateHashes: new Set(),
+    memories: [],
+    paymentMethods: [
+      { id: 'pm-transfer', name: 'Transferência', kind: 'transfer', is_active: true },
+      { id: 'pm-debit', name: 'Débito', kind: 'card', is_active: true },
+      { id: 'pm-card', name: 'Cartão Empresa', kind: 'card', is_active: true },
+      { id: 'pm-pix', name: 'PIX', kind: 'pix', is_active: true }
+    ]
+  });
+
+  assert.equal(items[0].decision_type, 'needs_review');
+  assert.equal(items[0].proposed.financial_payment_method_id, 'pm-debit');
+  assert.equal(items[0].proposed.financial_payment_method_name, 'Débito');
+  assert.equal(items[1].proposed.financial_payment_method_id, 'pm-pix');
+  assert.equal(items[1].proposed.financial_payment_method_name, 'PIX');
+  assert.equal(items[2].proposed.financial_payment_method_id, 'pm-card');
+  assert.equal(items[2].proposed.financial_payment_method_name, 'Cartão Empresa');
+});
+
+test('draft não sobrescreve forma vinda de memória financeira', () => {
+  const items = buildFinanceReconciliationDraftItems({
+    financial_account_id: 'acc-1',
+    lines: [ofxLineFixture({
+      description: 'Transferência enviada pelo Pix - Atlas Cloud',
+      normalized_description: 'transferencia enviada pelo pix atlas cloud'
+    })],
+    payables: [],
+    receivables: [],
+    transactions: [],
+    duplicateHashes: new Set(),
+    memories: [{
+      id: 'mem-atlas-pix',
+      normalized_pattern: 'atlas cloud',
+      direction: 'outflow',
+      financial_entity_id: 'entity-atlas',
+      financial_entity_name: 'Atlas Cloud',
+      financial_category_id: 'cat-software',
+      financial_category_name: 'Software',
+      financial_cost_center_id: null,
+      financial_cost_center_name: null,
+      financial_payment_method_id: 'pm-transfer',
+      financial_payment_method_name: 'Transferência',
+      usage_count: 5,
+      confidence_score: 0.9
+    }],
+    paymentMethods: [
+      { id: 'pm-transfer', name: 'Transferência', kind: 'transfer', is_active: true },
+      { id: 'pm-pix', name: 'PIX', kind: 'pix', is_active: true }
+    ]
+  });
+
+  assert.equal(items[0].decision_type, 'new_transaction');
+  assert.equal(items[0].proposed.financial_payment_method_id, 'pm-transfer');
+  assert.equal(items[0].proposed.financial_payment_method_name, 'Transferência');
+});

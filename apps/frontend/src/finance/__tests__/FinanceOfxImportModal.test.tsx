@@ -32,7 +32,11 @@ const preview: FinanceOfxPreview = {
     blocked_count: 1,
     duplicate_count: 1,
     inflow_cents: 45000,
-    outflow_cents: 1990
+    outflow_cents: 1990,
+    net_movement_cents: 43010,
+    opening_balance_cents: 10511,
+    ending_balance_cents: 53521,
+    ending_balance_as_of: '2026-05-24'
   },
   items: [
     {
@@ -207,6 +211,14 @@ const reviewCostCenters: FinanceCostCenter[] = [{
 }];
 
 const reviewPaymentMethods: FinancePaymentMethod[] = [{
+  id: 'pm-1',
+  organization_id: 'org-holand',
+  name: 'Débito em conta',
+  kind: 'card',
+  is_active: true,
+  created_at: '2026-05-25T00:00:00.000Z',
+  updated_at: '2026-05-25T00:00:00.000Z'
+}, {
   id: 'pm-edited',
   organization_id: 'org-holand',
   name: 'PIX',
@@ -253,6 +265,9 @@ test('FinanceOfxImportModal lets reviewers edit financial fields before approval
   await user.click(screen.getByRole('button', { name: 'Gerar prévia' }));
 
   await screen.findByText('TARIFA BANCARIA');
+  expect(screen.getByText('Conferência de saldo OFX')).toBeInTheDocument();
+  expect(screen.getByText('Saldo final OFX')).toBeInTheDocument();
+  expect(screen.getByText('R$ 535,21')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Editar TARIFA BANCARIA' }));
   await user.clear(screen.getByLabelText('Entidade TARIFA BANCARIA'));
   await user.type(screen.getByLabelText('Entidade TARIFA BANCARIA'), 'Fornecedor Editado');

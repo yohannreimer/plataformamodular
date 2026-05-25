@@ -211,6 +211,40 @@ test('parseFinanceOfx lê saldo quando a linha OFX trouxer BALAMT', () => {
   assert.equal(parsed.lines[0].balance_cents, 123456);
 });
 
+test('parseFinanceOfx lê período e saldo final do extrato OFX', () => {
+  const parsed = parseFinanceOfx({
+    organization_id: 'org-holand',
+    financial_account_id: 'acc-1',
+    source_file_name: 'saldo-final.ofx',
+    ofx_text: `
+<OFX>
+<BANKTRANLIST>
+<DTSTART>20260401000000[-3:BRT]
+<DTEND>20260430000000[-3:BRT]
+<STMTTRN>
+<DTPOSTED>20260430
+<TRNAMT>196.60
+<FITID>movement
+<MEMO>PIX recebido Cliente Alfa
+</STMTTRN>
+</BANKTRANLIST>
+<LEDGERBAL>
+<BALAMT>301.71
+<DTASOF>20260430000000[-3:BRT]
+</LEDGERBAL>
+</OFX>
+`
+  });
+
+  assert.equal(parsed.period_start, '2026-04-01');
+  assert.equal(parsed.period_end, '2026-04-30');
+  assert.deepEqual(parsed.statement_balance, {
+    balance_cents: 30171,
+    as_of: '2026-04-30',
+    source: 'ledger'
+  });
+});
+
 test('parseFinanceOfx preserva entidades numéricas XML inválidas em descrições OFX', () => {
   const parsed = parseFinanceOfx({
     organization_id: 'org-holand',

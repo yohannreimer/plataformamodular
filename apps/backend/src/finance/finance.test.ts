@@ -6304,7 +6304,7 @@ test('OFX preview and approval creates settled transaction, match, memory and bl
       .send({ company_id: 'company-a', name: 'Tarifas Bancárias', kind: 'expense' });
     assert.equal(categoryRes.status, 201, JSON.stringify(categoryRes.body));
 
-    const ofxText = `<OFX><BANKTRANLIST><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-22.00<FITID>atlas-1<MEMO>ATLAS CLOUD MENSALIDADE</STMTTRN><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-33.00<FITID>fee-1<MEMO>TARIFA BANCARIA</STMTTRN></BANKTRANLIST></OFX>`;
+    const ofxText = `<OFX><BANKTRANLIST><DTSTART>20260501000000[-3:BRT]<DTEND>20260524000000[-3:BRT]<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-22.00<FITID>atlas-1<MEMO>ATLAS CLOUD MENSALIDADE</STMTTRN><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260524<TRNAMT>-33.00<FITID>fee-1<MEMO>TARIFA BANCARIA</STMTTRN></BANKTRANLIST><LEDGERBAL><BALAMT>945.00<DTASOF>20260524000000[-3:BRT]</LEDGERBAL></OFX>`;
 
     const previewRes = await request(app)
       .post('/finance/reconciliation/ofx/preview')
@@ -6318,6 +6318,11 @@ test('OFX preview and approval creates settled transaction, match, memory and bl
       });
     assert.equal(previewRes.status, 200, JSON.stringify(previewRes.body));
     assert.equal(previewRes.body.summary.total_rows, 2);
+    assert.equal(previewRes.body.summary.outflow_cents, 5500);
+    assert.equal(previewRes.body.summary.net_movement_cents, -5500);
+    assert.equal(previewRes.body.summary.opening_balance_cents, 100000);
+    assert.equal(previewRes.body.summary.ending_balance_cents, 94500);
+    assert.equal(previewRes.body.summary.ending_balance_as_of, '2026-05-24');
     assert.equal(previewRes.body.items[0].decision_type, 'needs_review');
 
     const approveRes = await request(app)

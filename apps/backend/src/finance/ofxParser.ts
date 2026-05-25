@@ -11,6 +11,13 @@ export type ParseFinanceOfxInput = {
 
 export type ParseFinanceOfxResult = {
   source_file_hash: string;
+  period_start: string | null;
+  period_end: string | null;
+  statement_balance: {
+    balance_cents: number;
+    as_of: string | null;
+    source: 'ledger' | 'available';
+  } | null;
   lines: FinanceOfxLineDto[];
 };
 
@@ -27,6 +34,11 @@ function readTag(block: string, tag: string) {
   const match = new RegExp(`<${tag}>([^<\\r\\n]+)`, 'i').exec(block);
   const value = match?.[1]?.trim();
   return value ? decodeOfxEntities(value) : null;
+}
+
+function readBlock(block: string, tag: string) {
+  const match = new RegExp(`<${tag}>[\\s\\S]*?(?=<\\/${tag}>|<${tag}>|$)`, 'i').exec(block);
+  return match?.[0] ?? null;
 }
 
 function decodeOfxEntities(value: string) {
@@ -127,6 +139,24 @@ function parseOptionalOfxAmountToCents(value: string | null) {
   return parseOfxAmountToCents(value);
 }
 
+function parseOptionalOfxDate(value: string | null) {
+  if (!value) return null;
+  return parseOfxDate(value);
+}
+
+function readStatementBalance(ofxText: string): ParseFinanceOfxResult['statement_balance'] {
+  const ledgerBalanceBlock = readBlock(ofxText, 'LEDGERBAL');
+  const availableBalanceBlock = readBlock(ofxText, 'AVAILBAL');
+  const balanceBlock = ledgerBalanceBlock ?? availableBalanceBlock;
+  if (!balanceBlock) return null;
+
+  return {
+    balance_cents: parseOfxAmountToCents(readTag(balanceBlock, 'BALAMT')),
+    as_of: parseOptionalOfxDate(readTag(balanceBlock, 'DTASOF')),
+    source: ledgerBalanceBlock ? 'ledger' : 'available'
+  };
+}
+
 export function buildStatementDedupeHash(input: {
   financial_account_id: string;
   statement_date: string;
@@ -150,6 +180,7 @@ export function parseFinanceOfx(input: ParseFinanceOfxInput): ParseFinanceOfxRes
   if (blocks.length === 0) {
     throw new Error('Nenhuma movimentação OFX encontrada.');
   }
+  const bankTransactionListBlock = readBlock(input.ofx_text, 'BANKTRANLIST');
 
   const lines = blocks.map((block, index): FinanceOfxLineDto => {
     try {
@@ -219,6 +250,9 @@ export function parseFinanceOfx(input: ParseFinanceOfxInput): ParseFinanceOfxRes
 
   return {
     source_file_hash: createHash('sha256').update(input.ofx_text).digest('hex'),
+    period_start: parseOptionalOfxDate(readTag(bankTransactionListBlock ?? '', 'DTSTART')),
+    period_end: parseOptionalOfxDate(readTag(bankTransactionListBlock ?? '', 'DTEND')),
+    statement_balance: readStatementBalance(input.ofx_text),
     lines
   };
 }

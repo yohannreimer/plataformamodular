@@ -43,6 +43,12 @@ function formatCurrency(cents: number) {
   return new Intl.NumberFormat('pt-BR', { currency: 'BRL', style: 'currency' }).format(cents / 100);
 }
 
+function formatStatementDate(value: string | null) {
+  if (!value) return 'Data não informada';
+  const [year, month, day] = value.split('-');
+  return `${day}/${month}/${year}`;
+}
+
 function decisionLabel(item: FinanceReconciliationDraftItem) {
   if (item.decision_type === 'new_transaction') return 'Novo liquidado';
   if (item.decision_type === 'payable_match') return 'Conta a pagar';
@@ -337,6 +343,20 @@ export function FinanceOfxImportModal({
                 <SummaryCell label="Saídas" value={formatCurrency(preview.summary.outflow_cents)} />
               </section>
 
+              {preview.summary.ending_balance_cents !== null ? (
+                <section aria-label="Conferência de saldo OFX" style={{ alignItems: 'center', border: '1px solid #dbe3ef', borderRadius: 8, display: 'grid', gap: 12, gridTemplateColumns: '1fr auto auto auto', padding: '12px 14px' }}>
+                  <div>
+                    <strong style={{ color: '#0f172a', display: 'block', fontSize: 13 }}>Conferência de saldo OFX</strong>
+                    <span style={{ color: '#64748b', display: 'block', fontSize: 11, fontWeight: 700, marginTop: 3 }}>
+                      Saldo final informado em {formatStatementDate(preview.summary.ending_balance_as_of)}
+                    </span>
+                  </div>
+                  <BalanceMetric label="Saldo inicial" value={preview.summary.opening_balance_cents} />
+                  <BalanceMetric label="Movimento" value={preview.summary.net_movement_cents} />
+                  <BalanceMetric label="Saldo final OFX" value={preview.summary.ending_balance_cents} strong />
+                </section>
+              ) : null}
+
               <section aria-label="Linhas da prévia" style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
                 {preview.items.length === 0 ? (
                   <FinanceEmptyState title="Nenhuma linha OFX encontrada." description="Confira o arquivo e gere a prévia novamente." />
@@ -580,6 +600,15 @@ function SummaryCell({ label, value }: { label: string; value: number | string }
     <div style={{ borderRight: '1px solid #e2e8f0', display: 'grid', gap: 3, padding: 12 }}>
       <span style={{ color: '#64748b', fontSize: 11, fontWeight: 700 }}>{label}</span>
       <strong style={{ color: '#0f172a', fontSize: 14 }}><FinanceMono>{value}</FinanceMono></strong>
+    </div>
+  );
+}
+
+function BalanceMetric({ label, value, strong = false }: { label: string; value: number | null; strong?: boolean }) {
+  return (
+    <div style={{ display: 'grid', gap: 3, minWidth: 128, textAlign: 'right' }}>
+      <span style={{ color: '#64748b', fontSize: 11, fontWeight: 700 }}>{label}</span>
+      <strong style={{ color: strong ? '#047857' : '#0f172a', fontSize: 14 }}><FinanceMono>{value === null ? 'Sem dado' : formatCurrency(value)}</FinanceMono></strong>
     </div>
   );
 }
