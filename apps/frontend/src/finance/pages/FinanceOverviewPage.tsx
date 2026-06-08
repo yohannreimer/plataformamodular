@@ -118,7 +118,9 @@ export function FinanceOverviewPage() {
     );
   }
 
-  const organizationName = overview.organization_name || 'Empresa logada';
+  const organizationName = overview.organization_name === 'Holand'
+    ? 'Prymeira'
+    : overview.organization_name || 'Empresa logada';
   const qualityIssueCount = overview.summary.quality_issue_count ?? 0;
   const qualityCriticalCount = overview.summary.quality_critical_count ?? 0;
   function dismissQualityNotice() {
