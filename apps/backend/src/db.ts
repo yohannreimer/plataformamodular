@@ -3450,94 +3450,433 @@ function shouldSeedFinanceDemoData() {
 
 export function seedDb() {
   if (!hasSeed()) {
+    const today = nowDateIso();
+    const createdAt = new Date().toISOString();
+    const date = (offsetDays: number) => getDateOffsetIso(today, offsetDays);
 
-    const modules: Array<[string, string, string, string, number, string, number]> = [
-      ['mod-01', 'MOD-01', 'Instalacao', 'Instalacao TopSolid', 1, 'Iniciante', 1],
-      ['mod-02', 'MOD-02', 'CAD', 'TopSolid Design Basico', 3, 'Iniciante', 1],
-      ['mod-03', 'MOD-03', 'CAD', 'TopSolid Montagem', 2, 'Intermediario', 1],
-      ['mod-04', 'MOD-04', 'CAD', 'Detalhamento 2D', 2, 'Intermediario', 0],
-      ['mod-05', 'MOD-05', 'CAM', 'TopSolid CAM Basico', 3, 'Intermediario', 1],
-      ['mod-06', 'MOD-06', 'CAM', 'TopSolid CAM Avancado', 2, 'Avancado', 0]
+    const modules: Array<[string, string, string, string, string, number, string, number, 'ministrado' | 'entregavel', 'consome' | 'nao_consume']> = [
+      ['mod-01', 'VEL-01', 'Kickoff', 'Diagnóstico operacional', 'Mapeamento de processos, equipe, agenda e riscos antes da implantação.', 1, 'Essencial', 1, 'ministrado', 'consome'],
+      ['mod-02', 'VEL-02', 'Implantacao', 'Configuração do ambiente', 'Cadastros, permissões, calendário, portal e parâmetros de operação.', 2, 'Essencial', 1, 'ministrado', 'consome'],
+      ['mod-03', 'VEL-03', 'Agenda', 'Planejamento de capacidade', 'Montagem de agenda por técnico, conflito de horários e distribuição de carga.', 2, 'Intermediário', 1, 'ministrado', 'consome'],
+      ['mod-04', 'VEL-04', 'Portal', 'Portal do cliente e certificados', 'Liberação de portal, agenda externa, chamados e certificados de entrega.', 1, 'Intermediário', 1, 'ministrado', 'consome'],
+      ['mod-05', 'VEL-05', 'Suporte', 'Playbook de suporte técnico', 'Triagem, SLA, handoff, evidências e comunicação com o cliente.', 2, 'Intermediário', 0, 'ministrado', 'consome'],
+      ['mod-06', 'VEL-06', 'Licencas', 'Governança de licenças', 'Controle de programas, usuários, ciclos de renovação e riscos de vencimento.', 1, 'Intermediário', 0, 'ministrado', 'consome'],
+      ['mod-07', 'VEL-07', 'Automacao', 'Rotinas e automações operacionais', 'Padronização de tarefas recorrentes, alertas e conferências semanais.', 2, 'Avançado', 0, 'ministrado', 'consome'],
+      ['mod-08', 'VEL-08', 'Entrega', 'Relatório executivo de implantação', 'Documento final com status, próximos passos e indicadores de adoção.', 1, 'Executivo', 0, 'entregavel', 'nao_consume'],
+      ['mod-09', 'VEL-09', 'Expansao', 'Expansão multiunidade', 'Modelo para operação com filiais, múltiplos times e governança por unidade.', 3, 'Avançado', 0, 'ministrado', 'consome']
     ];
 
-    const companies: Array<[string, string, string, string, number]> = [
-      ['comp-01', 'Metal Forte', 'Ativo', 'Cliente industrial', 0],
-      ['comp-02', 'Usinagem Alpha', 'Ativo', 'Entrou em 2025', 0],
-      ['comp-03', 'Mecanica Beta', 'Ativo', 'Pendencia de instalacao', 0],
-      ['comp-04', 'Projeto Gama', 'Inativo', 'Conta em pausa', 0]
+    const companies: Array<[string, string, string, string, number, string, string, string, string, string, number]> = [
+      ['comp-01', 'Metal Forte', 'Ativo', 'Planta industrial com 42 usuários, implantação crítica e diretoria acompanhando SLA.', 95, 'Critica', 'Roberta Campos', '+55 19 99123-7700', 'roberta.campos@metalforte.ind.br', 'Hibrida', 0],
+      ['comp-02', 'Grupo Aurora', 'Ativo', 'Rede varejista em rollout para 8 unidades, precisa de agenda por filial e portal ativo.', 88, 'Alta', 'Helena Mourão', '+55 11 98841-1200', 'helena.mourao@grupoaurora.com.br', 'Hibrida', 0],
+      ['comp-03', 'NorteLog', 'Ativo', 'Operador logístico com implantação em duas filiais e risco alto de conflito de técnicos.', 82, 'Alta', 'Vanessa Farias', '+55 92 99102-2801', 'vanessa.farias@nortelog.com.br', 'Presencial', 0],
+      ['comp-04', 'Conecta Saúde', 'Ativo', 'Healthtech validando portal, certificados e chamados para hospitais parceiros.', 74, 'Alta', 'Mônica Barcelos', '+55 51 99144-5550', 'monica.barcelos@conectasaude.com.br', 'Online', 0],
+      ['comp-05', 'Zenith Educação', 'Em_treinamento', 'Implantação com turmas corporativas, participantes e certificados por módulo.', 66, 'Normal', 'Mariana Seabra', '+55 81 99190-1122', 'mariana.seabra@zenitheducacao.com.br', 'Online', 0],
+      ['comp-06', 'Atlas Contabilidade', 'Ativo', 'Conta madura em expansão, foco em licenças e suporte recorrente.', 58, 'Normal', 'Sofia Mendes', '+55 21 99140-2203', 'sofia.mendes@atlascontabil.com.br', 'Online', 0],
+      ['comp-07', 'Estúdio Maralto', 'Em_treinamento', 'Cliente pequeno, ótimo para demonstrar implantação rápida e comunicação simples.', 44, 'Normal', 'Lívia Ramos', '+55 48 99111-1910', 'livia@maralto.studio', 'Online', 0],
+      ['comp-08', 'Flor de Sal Alimentos', 'Ativo', 'Expansão comercial com necessidade de agenda e handoff entre consultores.', 39, 'Normal', 'Isadora Gomes', '+55 85 99907-4433', 'isadora.gomes@flordesal.com.br', 'Hibrida', 0],
+      ['comp-09', 'Casa Riviera', 'Pausado', 'Conta aguardando janela de retomada, mantendo portal e chamados em observação.', 22, 'Baixa', 'Bianca Teixeira', '+55 13 99606-8800', 'bianca@casariviera.com.br', 'Online', 0],
+      ['comp-10', 'Omnix Tech', 'Ativo', 'Conta estratégica de RevOps com agenda avançada e expansão multiunidade em avaliação.', 91, 'Critica', 'Tatiane Freitas', '+55 11 99612-9200', 'tatiane.freitas@omnixtech.com.br', 'Hibrida', 0]
     ];
 
-    const techs: Array<[string, string, string]> = [
-      ['tech-01', 'Carlos Lima', 'Disponivel no periodo da manha'],
-      ['tech-02', 'Ana Souza', 'Especialista em CAD/CAM'],
-      ['tech-03', 'Paulo Reis', 'Foco em implantacao e consultoria']
+    const techs: Array<[string, string, string, number, string]> = [
+      ['tech-01', 'Carlos Lima', 'Manhã reservada para implantação presencial; tarde para suporte remoto.', 185, '#2563eb'],
+      ['tech-02', 'Ana Souza', 'Especialista em agenda, portal e governança de clientes estratégicos.', 220, '#16a34a'],
+      ['tech-03', 'Paulo Reis', 'Consultor sênior para diagnóstico, rollout e recuperação de contas críticas.', 260, '#b45309'],
+      ['tech-04', 'Marina Telles', 'Foco em suporte, certificados, portal e comunicação com usuários finais.', 175, '#be185d'],
+      ['tech-05', 'Igor Nascimento', 'Especialista em licenças, dados, integração e conferência operacional.', 210, '#7c3aed'],
+      ['tech-06', 'Bruna Carvalho', 'Boa disponibilidade para treinamentos online e turmas de adoção.', 160, '#0891b2'],
+      ['tech-07', 'Renan Oliveira', 'Backup técnico para campo, filiais e visitas de urgência.', 195, '#dc2626']
     ];
 
     const insertModule = db.prepare(
-      'insert into module_template (id, code, category, name, duration_days, profile, is_mandatory) values (?, ?, ?, ?, ?, ?, ?)'
+      'insert into module_template (id, code, category, name, description, duration_days, profile, is_mandatory, delivery_mode, client_hours_policy) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     modules.forEach((m) => insertModule.run(...m));
 
-    const insertCompany = db.prepare('insert into company (id, name, status, notes, priority) values (?, ?, ?, ?, ?)');
+    const insertCompany = db.prepare(`
+      insert into company (
+        id, name, status, notes, priority, priority_level, contact_name, contact_phone, contact_email, modality, is_third_party
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
     companies.forEach((c) => insertCompany.run(...c));
 
-    const insertTech = db.prepare('insert into technician (id, name, availability_notes) values (?, ?, ?)');
+    const insertTech = db.prepare('insert into technician (id, name, availability_notes, hourly_cost, calendar_color) values (?, ?, ?, ?, ?)');
     techs.forEach((t) => insertTech.run(...t));
 
     const insertSkill = db.prepare('insert into technician_skill (technician_id, module_id) values (?, ?)');
-    insertSkill.run('tech-01', 'mod-01');
-    insertSkill.run('tech-01', 'mod-02');
-    insertSkill.run('tech-01', 'mod-03');
-    insertSkill.run('tech-02', 'mod-02');
-    insertSkill.run('tech-02', 'mod-03');
-    insertSkill.run('tech-02', 'mod-05');
-    insertSkill.run('tech-02', 'mod-06');
-    insertSkill.run('tech-03', 'mod-01');
-    insertSkill.run('tech-03', 'mod-04');
-
-    const progress = db.prepare(
-      'insert into company_module_progress (id, company_id, module_id, status, completed_at) values (?, ?, ?, ?, ?)'
-    );
-    progress.run('prog-01', 'comp-01', 'mod-01', 'Concluido', '2025-12-10');
-    progress.run('prog-02', 'comp-01', 'mod-02', 'Concluido', '2026-01-12');
-    progress.run('prog-03', 'comp-02', 'mod-01', 'Concluido', '2026-01-03');
-    progress.run('prog-04', 'comp-02', 'mod-02', 'Planejado', null);
-
-    const activation = db.prepare(
-      'insert or ignore into company_module_activation (company_id, module_id, is_enabled) values (?, ?, 1)'
-    );
-    companies.forEach((company) => {
-      modules.forEach((module) => {
-        activation.run(company[0], module[0]);
-      });
+    [
+      ['tech-01', ['mod-01', 'mod-02', 'mod-03', 'mod-05']],
+      ['tech-02', ['mod-01', 'mod-03', 'mod-04', 'mod-08', 'mod-09']],
+      ['tech-03', ['mod-01', 'mod-02', 'mod-07', 'mod-09']],
+      ['tech-04', ['mod-04', 'mod-05', 'mod-08']],
+      ['tech-05', ['mod-02', 'mod-06', 'mod-07']],
+      ['tech-06', ['mod-01', 'mod-03', 'mod-04']],
+      ['tech-07', ['mod-02', 'mod-05', 'mod-09']]
+    ].forEach(([technicianId, moduleIds]) => {
+      (moduleIds as string[]).forEach((moduleId) => insertSkill.run(technicianId, moduleId));
     });
 
-    const cohorts = db.prepare(
-      'insert into cohort (id, code, name, start_date, technician_id, status, capacity_companies, notes) values (?, ?, ?, ?, ?, ?, ?, ?)'
+    const progress = db.prepare(`
+      insert into company_module_progress (
+        id, company_id, module_id, status, notes, completed_at, custom_duration_days, custom_units
+      ) values (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const progressRows: Array<[string, string, string, string, string, string | null, number | null, number | null]> = [
+      ['prog-01-01', 'comp-01', 'mod-01', 'Concluido', 'Diagnóstico executivo validado pela Roberta.', date(-28), null, null],
+      ['prog-01-02', 'comp-01', 'mod-02', 'Concluido', 'Ambiente liberado para 42 usuários.', date(-21), null, null],
+      ['prog-01-03', 'comp-01', 'mod-03', 'Em_execucao', 'Agenda de chão de fábrica em revisão.', null, 3, null],
+      ['prog-01-04', 'comp-01', 'mod-04', 'Planejado', 'Portal precisa sair antes da próxima visita.', null, null, null],
+      ['prog-02-01', 'comp-02', 'mod-01', 'Concluido', 'Mapa de unidades fechado.', date(-16), null, null],
+      ['prog-02-02', 'comp-02', 'mod-02', 'Em_execucao', 'Configuração por filial em andamento.', null, null, null],
+      ['prog-02-03', 'comp-02', 'mod-03', 'Planejado', 'Distribuir agenda por gerente regional.', null, null, null],
+      ['prog-03-01', 'comp-03', 'mod-01', 'Concluido', 'Diagnóstico das filiais Manaus e Belém concluído.', date(-12), null, null],
+      ['prog-03-02', 'comp-03', 'mod-02', 'Em_execucao', 'Pendência de acesso para unidade Belém.', null, null, null],
+      ['prog-03-05', 'comp-03', 'mod-05', 'Planejado', 'Suporte precisa de SLA por filial.', null, null, null],
+      ['prog-04-01', 'comp-04', 'mod-01', 'Concluido', 'Jornada hospitalar mapeada.', date(-18), null, null],
+      ['prog-04-04', 'comp-04', 'mod-04', 'Em_execucao', 'Portal em homologação com três hospitais.', null, null, null],
+      ['prog-04-08', 'comp-04', 'mod-08', 'Planejado', 'Relatório para diretoria na próxima semana.', null, null, null],
+      ['prog-05-01', 'comp-05', 'mod-01', 'Concluido', 'Turmas corporativas priorizadas.', date(-10), null, null],
+      ['prog-05-03', 'comp-05', 'mod-03', 'Em_execucao', 'Agenda de instrutores sendo conciliada.', null, null, null],
+      ['prog-06-01', 'comp-06', 'mod-01', 'Concluido', 'Conta madura, fase de expansão.', date(-45), null, null],
+      ['prog-06-06', 'comp-06', 'mod-06', 'Em_execucao', 'Licenças em revisão de renovação.', null, null, null],
+      ['prog-07-01', 'comp-07', 'mod-01', 'Concluido', 'Implantação rápida validada.', date(-6), null, null],
+      ['prog-07-02', 'comp-07', 'mod-02', 'Planejado', 'Configuração começará amanhã.', null, null, null],
+      ['prog-08-01', 'comp-08', 'mod-01', 'Concluido', 'Fluxo comercial distribuidores mapeado.', date(-9), null, null],
+      ['prog-08-03', 'comp-08', 'mod-03', 'Planejado', 'Agenda híbrida para equipe comercial.', null, null, null],
+      ['prog-10-01', 'comp-10', 'mod-01', 'Concluido', 'RevOps e CS mapeados.', date(-14), null, null],
+      ['prog-10-07', 'comp-10', 'mod-07', 'Em_execucao', 'Automação de rotinas críticas em teste.', null, null, null],
+      ['prog-10-09', 'comp-10', 'mod-09', 'Planejado', 'Expansão para CS aguardando sponsor.', null, null, null]
+    ];
+    progressRows.forEach((row) => progress.run(...row));
+
+    const activation = db.prepare(
+      'insert or ignore into company_module_activation (company_id, module_id, is_enabled) values (?, ?, ?)'
     );
-    cohorts.run('coh-01', 'TUR-001', 'CAD Basico + Montagem', '2026-02-20', 'tech-02', 'Confirmada', 8, null);
-    cohorts.run('coh-02', 'TUR-002', 'Instalacao + CAD Basico', '2026-02-27', 'tech-01', 'Planejada', 10, null);
+    companies.forEach((company) => modules.forEach((module) => activation.run(company[0], module[0], company[0] === 'comp-09' && module[0] === 'mod-09' ? 0 : 1)));
+
+    const insertProgram = db.prepare(`
+      insert or replace into license_program (id, name, topsolid_kind, topsolid_code, notes, created_at, updated_at)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `);
+    [
+      ['lpr-velio-core', 'Velio Core', 'suite', 'VEL-CORE', 'Agenda, clientes, turmas e implantação.'],
+      ['lpr-velio-portal', 'Velio Portal', 'addon', 'VEL-PORTAL', 'Portal do cliente, chamados e certificados.'],
+      ['lpr-velio-field', 'Velio Field Ops', 'addon', 'VEL-FIELD', 'Rotina de campo e visitas presenciais.'],
+      ['lpr-topsolid-cad', 'TopSolid CAD', 'cad', 'TOP-CAD', 'Licença técnica controlada pelo Velio.'],
+      ['lpr-topsolid-cam', 'TopSolid CAM', 'cam', 'TOP-CAM', 'Licença CAM com renovação operacional.']
+    ].forEach((row) => insertProgram.run(...row, createdAt, createdAt));
+
+    const insertLicense = db.prepare(`
+      insert into company_license (
+        id, company_id, name, program_id, user_name, module_list, license_identifier,
+        renewal_cycle, expires_at, notes, last_renewed_at, created_at, updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    [
+      ['lic-01', 'comp-01', 'Velio Core Enterprise', 'lpr-velio-core', 'Roberta Campos', 'Agenda; Implantação; Suporte', 'VEL-CORE-MF-042', 'Anual', date(42), 'Renovação com risco comercial se portal atrasar.', date(-323)],
+      ['lic-02', 'comp-01', 'TopSolid CAM - Usinagem', 'lpr-topsolid-cam', 'André Vasconcelos', 'CAM; Pós-processador', 'TOP-CAM-MF-009', 'Mensal', date(8), 'Renovar antes da visita presencial.', date(-22)],
+      ['lic-03', 'comp-02', 'Velio Portal Rede Aurora', 'lpr-velio-portal', 'Helena Mourão', 'Portal; Certificados; Chamados', 'VEL-PORT-AUR-008', 'Anual', date(74), 'Liberar oito unidades após piloto.', date(-291)],
+      ['lic-04', 'comp-03', 'Velio Field Ops NorteLog', 'lpr-velio-field', 'Vanessa Farias', 'Campo; Filiais; SLA', 'VEL-FIELD-NLG-002', 'Trimestral', date(16), 'Inclui agenda de visita Manaus e Belém.', date(-72)],
+      ['lic-05', 'comp-06', 'Velio Core Atlas', 'lpr-velio-core', 'Sofia Mendes', 'Agenda; Suporte', 'VEL-CORE-ATL-014', 'Mensal', date(5), 'Atenção: decisão de expansão depende dessa renovação.', date(-25)],
+      ['lic-06', 'comp-10', 'Velio Automação Omnix', 'lpr-velio-core', 'Tatiane Freitas', 'Automação; Expansão; CS', 'VEL-AUTO-OMX-001', 'Anual', date(118), 'Conta estratégica para case executivo.', date(-247)]
+    ].forEach((row) => insertLicense.run(...row, createdAt, createdAt));
+
+    const cohorts = db.prepare(
+      'insert into cohort (id, code, name, start_date, technician_id, status, capacity_companies, period, start_time, end_time, delivery_mode, notes) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    const cohortRows: Array<[string, string, string, string, string, string, number, string, string, string, string, string]> = [
+      ['coh-01', 'VEL-241', 'Metal Forte - agenda e chão de fábrica', date(-2), 'tech-03', 'Confirmada', 4, 'Integral', '09:00', '17:00', 'Presencial', 'Semana crítica com diretoria acompanhando adoção.'],
+      ['coh-02', 'VEL-242', 'Aurora - rollout de unidades', date(1), 'tech-02', 'Confirmada', 6, 'Meio_periodo', '09:00', '12:30', 'Hibrida', 'Piloto com unidade matriz e duas filiais.'],
+      ['coh-03', 'VEL-243', 'NorteLog - implantação em filiais', date(3), 'tech-07', 'Planejada', 5, 'Integral', '10:00', '16:00', 'Presencial', 'Confirmar deslocamento e acesso da unidade Belém.'],
+      ['coh-04', 'VEL-244', 'Conecta Saúde - portal hospitalar', date(5), 'tech-04', 'Confirmada', 8, 'Meio_periodo', '14:00', '17:00', 'Online', 'Homologação com usuários finais e evidências.'],
+      ['coh-05', 'VEL-245', 'Zenith - certificados e turmas', date(8), 'tech-06', 'Planejada', 10, 'Meio_periodo', '09:30', '12:30', 'Online', 'Turma grande para demonstrar participantes e certificados.'],
+      ['coh-06', 'VEL-246', 'Atlas - governança de licenças', date(10), 'tech-05', 'Planejada', 3, 'Meio_periodo', '15:00', '18:00', 'Online', 'Renovação próxima com sponsor financeiro.'],
+      ['coh-07', 'VEL-247', 'Omnix - automações RevOps', date(12), 'tech-03', 'Planejada', 4, 'Integral', '09:00', '17:00', 'Hibrida', 'Conta estratégica para expansão.'],
+      ['coh-08', 'VEL-238', 'Estúdio Maralto - implantação expressa', date(-7), 'tech-04', 'Concluida', 2, 'Meio_periodo', '10:00', '12:00', 'Online', 'Entrega rápida já concluída, bom exemplo de certificado.']
+    ];
+    cohortRows.forEach((row) => cohorts.run(...row));
 
     const blocks = db.prepare(
       'insert into cohort_module_block (id, cohort_id, module_id, order_in_cohort, start_day_offset, duration_days) values (?, ?, ?, ?, ?, ?)'
     );
-    blocks.run('blk-01', 'coh-01', 'mod-02', 1, 1, 3);
-    blocks.run('blk-02', 'coh-01', 'mod-03', 2, 4, 2);
-    blocks.run('blk-03', 'coh-02', 'mod-01', 1, 1, 1);
-    blocks.run('blk-04', 'coh-02', 'mod-02', 2, 2, 3);
+    [
+      ['blk-01', 'coh-01', 'mod-03', 1, 0, 2],
+      ['blk-02', 'coh-01', 'mod-05', 2, 2, 1],
+      ['blk-03', 'coh-02', 'mod-02', 1, 0, 2],
+      ['blk-04', 'coh-02', 'mod-03', 2, 2, 2],
+      ['blk-05', 'coh-03', 'mod-02', 1, 0, 2],
+      ['blk-06', 'coh-03', 'mod-09', 2, 2, 3],
+      ['blk-07', 'coh-04', 'mod-04', 1, 0, 1],
+      ['blk-08', 'coh-04', 'mod-08', 2, 1, 1],
+      ['blk-09', 'coh-05', 'mod-03', 1, 0, 2],
+      ['blk-10', 'coh-05', 'mod-04', 2, 2, 1],
+      ['blk-11', 'coh-06', 'mod-06', 1, 0, 1],
+      ['blk-12', 'coh-07', 'mod-07', 1, 0, 2],
+      ['blk-13', 'coh-07', 'mod-09', 2, 2, 3],
+      ['blk-14', 'coh-08', 'mod-02', 1, 0, 1],
+      ['blk-15', 'coh-08', 'mod-08', 2, 1, 1]
+    ].forEach((row) => blocks.run(...row));
+
+    const scheduleDay = db.prepare('insert into cohort_schedule_day (id, cohort_id, day_index, day_date, start_time, end_time) values (?, ?, ?, ?, ?, ?)');
+    cohortRows.forEach((cohort) => {
+      const blockCount = cohort[0] === 'coh-07' ? 5 : cohort[0] === 'coh-03' ? 5 : cohort[0] === 'coh-08' ? 2 : 3;
+      for (let index = 0; index < blockCount; index += 1) {
+        scheduleDay.run(`sch-${cohort[0]}-${index + 1}`, cohort[0], index + 1, getDateOffsetIso(cohort[3], index), cohort[8], cohort[9]);
+      }
+    });
 
     const allocations = db.prepare(
-      'insert into cohort_allocation (id, cohort_id, company_id, module_id, entry_day, status, notes) values (?, ?, ?, ?, ?, ?, ?)'
+      'insert into cohort_allocation (id, cohort_id, company_id, module_id, entry_day, status, notes, override_installation_prereq, override_reason, executed_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
-    allocations.run('all-01', 'coh-01', 'comp-01', 'mod-03', 4, 'Confirmado', 'Entrou no modulo de montagem');
-    allocations.run('all-02', 'coh-02', 'comp-03', 'mod-01', 1, 'Previsto', null);
+    [
+      ['all-01', 'coh-01', 'comp-01', 'mod-03', 1, 'Confirmado', 'Diretoria estará presente no primeiro bloco.', 0, null, null],
+      ['all-02', 'coh-01', 'comp-01', 'mod-05', 3, 'Previsto', 'SLA de suporte entra depois da agenda.', 0, null, null],
+      ['all-03', 'coh-02', 'comp-02', 'mod-02', 1, 'Confirmado', 'Unidade matriz participa como piloto.', 0, null, null],
+      ['all-04', 'coh-02', 'comp-02', 'mod-03', 3, 'Previsto', 'Aguardando grade de gerentes regionais.', 0, null, null],
+      ['all-05', 'coh-03', 'comp-03', 'mod-02', 1, 'Previsto', 'Acesso Belém ainda pendente.', 1, 'Sponsor liberou exceção para não travar campo.', null],
+      ['all-06', 'coh-03', 'comp-03', 'mod-09', 3, 'Previsto', 'Expansão multiunidade após implantação.', 0, null, null],
+      ['all-07', 'coh-04', 'comp-04', 'mod-04', 1, 'Confirmado', 'Portal será homologado com três hospitais.', 0, null, null],
+      ['all-08', 'coh-04', 'comp-04', 'mod-08', 2, 'Previsto', 'Relatório executivo para diretoria.', 0, null, null],
+      ['all-09', 'coh-05', 'comp-05', 'mod-03', 1, 'Previsto', 'Conciliar agenda de instrutores.', 0, null, null],
+      ['all-10', 'coh-05', 'comp-05', 'mod-04', 3, 'Previsto', 'Certificados por turma corporativa.', 0, null, null],
+      ['all-11', 'coh-06', 'comp-06', 'mod-06', 1, 'Confirmado', 'Renovação vence em poucos dias.', 0, null, null],
+      ['all-12', 'coh-07', 'comp-10', 'mod-07', 1, 'Previsto', 'Automação em teste com RevOps.', 0, null, null],
+      ['all-13', 'coh-07', 'comp-10', 'mod-09', 3, 'Previsto', 'CS entra no segundo bloco.', 0, null, null],
+      ['all-14', 'coh-08', 'comp-07', 'mod-02', 1, 'Executado', 'Ambiente configurado em um dia.', 0, null, date(-6)],
+      ['all-15', 'coh-08', 'comp-07', 'mod-08', 2, 'Executado', 'Relatório entregue no portal.', 0, null, date(-5)]
+    ].forEach((row) => allocations.run(...row));
+
+    const insertParticipant = db.prepare('insert into cohort_participant (id, cohort_id, company_id, participant_name, created_at) values (?, ?, ?, ?, ?)');
+    const insertParticipantModule = db.prepare('insert into cohort_participant_module (participant_id, module_id) values (?, ?)');
+    const participantRows = [
+      ['part-01', 'coh-01', 'comp-01', 'Roberta Campos', ['mod-03', 'mod-05']],
+      ['part-02', 'coh-01', 'comp-01', 'André Vasconcelos', ['mod-03', 'mod-05']],
+      ['part-03', 'coh-02', 'comp-02', 'Helena Mourão', ['mod-02', 'mod-03']],
+      ['part-04', 'coh-02', 'comp-02', 'Caio Braga', ['mod-02', 'mod-03']],
+      ['part-05', 'coh-03', 'comp-03', 'Vanessa Farias', ['mod-02', 'mod-09']],
+      ['part-06', 'coh-03', 'comp-03', 'Otávio Leal', ['mod-02', 'mod-09']],
+      ['part-07', 'coh-04', 'comp-04', 'Mônica Barcelos', ['mod-04', 'mod-08']],
+      ['part-08', 'coh-05', 'comp-05', 'Mariana Seabra', ['mod-03', 'mod-04']],
+      ['part-09', 'coh-07', 'comp-10', 'Tatiane Freitas', ['mod-07', 'mod-09']],
+      ['part-10', 'coh-07', 'comp-10', 'Leandro Cunha', ['mod-07', 'mod-09']]
+    ] as const;
+    participantRows.forEach(([id, cohortId, companyId, name, moduleIds]) => {
+      insertParticipant.run(id, cohortId, companyId, name, createdAt);
+      moduleIds.forEach((moduleId) => insertParticipantModule.run(id, moduleId));
+    });
+
+    const insertOptional = db.prepare('insert into optional_module (id, code, category, name, duration_days, profile, notes) values (?, ?, ?, ?, ?, ?, ?)');
+    [
+      ['opt-01', 'OPT-SLA', 'Suporte', 'Auditoria de SLA', 1, 'Executivo', 'Revisão semanal de tickets críticos.'],
+      ['opt-02', 'OPT-DADOS', 'Dados', 'Higienização de base', 2, 'Operacional', 'Padronização de clientes, contatos e licenças.'],
+      ['opt-03', 'OPT-CAMPO', 'Campo', 'Checklist de visita presencial', 1, 'Campo', 'Roteiro para técnicos externos.']
+    ].forEach((row) => insertOptional.run(...row));
+
+    const optionalProgress = db.prepare('insert into company_optional_progress (id, company_id, optional_module_id, status, notes) values (?, ?, ?, ?, ?)');
+    [
+      ['oprog-01', 'comp-01', 'opt-01', 'Em_execucao', 'SLA crítico na implantação da Metal Forte.'],
+      ['oprog-02', 'comp-03', 'opt-03', 'Planejado', 'Visita de campo NorteLog precisa de checklist.'],
+      ['oprog-03', 'comp-10', 'opt-02', 'Planejado', 'Omnix quer sanear dados antes da expansão.']
+    ].forEach((row) => optionalProgress.run(...row));
 
     const prereq = db.prepare(
       'insert or ignore into module_prerequisite (module_id, prerequisite_module_id) values (?, ?)'
     );
-    modules
-      .filter((item) => item[1] !== 'MOD-01')
-      .forEach((item) => prereq.run(item[0], 'mod-01'));
+    [
+      ['mod-02', 'mod-01'],
+      ['mod-03', 'mod-02'],
+      ['mod-04', 'mod-02'],
+      ['mod-05', 'mod-04'],
+      ['mod-06', 'mod-02'],
+      ['mod-07', 'mod-03'],
+      ['mod-08', 'mod-04'],
+      ['mod-09', 'mod-07']
+    ].forEach((row) => prereq.run(...row));
+
+    const insertActivity = db.prepare(`
+      insert into calendar_activity (
+        id, title, activity_type, start_date, end_date, selected_dates, linked_module_id, hours_scope,
+        all_day, start_time, end_time, technician_id, company_id, status, notes, created_at, updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const insertActivityTech = db.prepare('insert into calendar_activity_technician (activity_id, technician_id) values (?, ?)');
+    const insertActivityDay = db.prepare('insert into calendar_activity_day (activity_id, day_date, all_day, start_time, end_time) values (?, ?, ?, ?, ?)');
+    const activities = [
+      ['act-01', 'War room Metal Forte - agenda chão de fábrica', 'Implementacao', date(0), date(0), 'mod-03', 'cohort', 0, '09:00', '12:00', 'tech-03', 'comp-01', 'Em_andamento', 'Revisar conflitos de turno e aprovar agenda da semana.', ['tech-03', 'tech-07']],
+      ['act-02', 'Visita NorteLog Manaus - liberação de acessos', 'Visita_cliente', date(1), date(1), 'mod-02', 'cohort', 0, '10:00', '16:00', 'tech-07', 'comp-03', 'Planejada', 'Levar checklist de campo e confirmar acesso Belém.', ['tech-07']],
+      ['act-03', 'Homologação portal Conecta Saúde', 'Implementacao', date(2), date(2), 'mod-04', 'cohort', 0, '14:00', '17:00', 'tech-04', 'comp-04', 'Planejada', 'Validar agenda externa e chamados com três hospitais.', ['tech-04']],
+      ['act-04', 'Comitê executivo Grupo Aurora', 'Reuniao', date(3), date(3), 'mod-08', 'none', 0, '09:00', '10:30', 'tech-02', 'comp-02', 'Planejada', 'Apresentar plano de rollout para oito unidades.', ['tech-02', 'tech-03']],
+      ['act-05', 'Plantão de suporte Atlas', 'Suporte', date(0), date(0), 'mod-06', 'none', 0, '15:00', '18:00', 'tech-05', 'comp-06', 'Planejada', 'Renovação próxima e dúvidas de licenças.', ['tech-05']],
+      ['act-06', 'Treinamento Zenith - certificados', 'Implementacao', date(5), date(5), 'mod-04', 'cohort', 0, '09:30', '12:30', 'tech-06', 'comp-05', 'Planejada', 'Turma grande com participantes e emissão de certificados.', ['tech-06']],
+      ['act-07', 'Pré-vendas Omnix - expansão CS', 'Pre_vendas', date(6), date(6), 'mod-09', 'none', 0, '11:00', '12:00', 'tech-03', 'comp-10', 'Planejada', 'Mapear expansão para time de customer success.', ['tech-03']],
+      ['act-08', 'Fechamento Maralto - entrega executiva', 'Pos_vendas', date(-1), date(-1), 'mod-08', 'none', 0, '16:00', '17:00', 'tech-04', 'comp-07', 'Concluida', 'Entrega final e próximos passos enviados ao portal.', ['tech-04']]
+    ] as const;
+    activities.forEach((row) => {
+      const [id, title, type, startDate, endDate, moduleId, hoursScope, allDay, startTime, endTime, techId, companyId, status, notes, techIds] = row;
+      insertActivity.run(id, title, type, startDate, endDate, JSON.stringify([startDate]), moduleId, hoursScope, allDay, startTime, endTime, techId, companyId, status, notes, createdAt, createdAt);
+      insertActivityDay.run(id, startDate, allDay, startTime, endTime);
+      techIds.forEach((technicianId) => insertActivityTech.run(id, technicianId));
+    });
+
+    const insertWorkspace = db.prepare('insert into planning_workspace (id, name, status, mode, horizon_days, notes, created_at, updated_at, published_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    insertWorkspace.run('plan-01', 'Plano executivo junho - clientes críticos', 'Rascunho', 'Assistido', 45, 'Reorganizar capacidade da equipe para Metal Forte, NorteLog, Aurora e Omnix.', createdAt, createdAt, null);
+    insertWorkspace.run('plan-02', 'Agenda publicada Q3 - expansão', 'Publicado', 'Manual', 60, 'Planejamento publicado para contas em expansão e pós-venda.', createdAt, createdAt, date(-2));
+
+    const insertWorkspaceClient = db.prepare('insert into planning_workspace_client (workspace_id, company_id, priority, created_at) values (?, ?, ?, ?)');
+    [
+      ['plan-01', 'comp-01', 100],
+      ['plan-01', 'comp-03', 90],
+      ['plan-01', 'comp-02', 85],
+      ['plan-01', 'comp-10', 80],
+      ['plan-02', 'comp-04', 70],
+      ['plan-02', 'comp-05', 65],
+      ['plan-02', 'comp-06', 60]
+    ].forEach((row) => insertWorkspaceClient.run(...row, createdAt));
+
+    const insertPlanningCohort = db.prepare(`
+      insert into planning_cohort (
+        id, workspace_id, company_id, module_id, technician_id, published_cohort_id,
+        name, status, delivery_mode, period, notes, created_at, updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    [
+      ['pcoh-01', 'plan-01', 'comp-01', 'mod-03', 'tech-03', null, 'Metal Forte - capacidade crítica', 'Rascunho', 'Presencial', 'Integral', 'Precisa evitar conflito com suporte Atlas.'],
+      ['pcoh-02', 'plan-01', 'comp-03', 'mod-09', 'tech-07', null, 'NorteLog - filiais e campo', 'Rascunho', 'Presencial', 'Integral', 'Deslocamento em Manaus e Belém.'],
+      ['pcoh-03', 'plan-01', 'comp-10', 'mod-07', 'tech-03', null, 'Omnix - automação RevOps', 'Rascunho', 'Hibrida', 'Integral', 'Conta estratégica com sponsor executivo.'],
+      ['pcoh-04', 'plan-02', 'comp-04', 'mod-04', 'tech-04', 'coh-04', 'Conecta Saúde - portal', 'Publicado', 'Online', 'Meio_periodo', 'Já refletido na agenda.']
+    ].forEach((row) => insertPlanningCohort.run(...row, createdAt, createdAt));
+
+    const insertEncounter = db.prepare(`
+      insert into planning_encounter (
+        id, workspace_id, planning_cohort_id, company_id, module_id, technician_id,
+        encounter_index, day_date, start_time, end_time, status, notes, published_cohort_id, created_at, updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    [
+      ['penc-01', 'plan-01', 'pcoh-01', 'comp-01', 'mod-03', 'tech-03', 1, date(2), '09:00', '12:00', 'Rascunho', 'Bloco de agenda com diretoria.', null],
+      ['penc-02', 'plan-01', 'pcoh-01', 'comp-01', 'mod-03', 'tech-03', 2, date(3), '09:00', '12:00', 'Rascunho', 'Ajustar turnos da fábrica.', null],
+      ['penc-03', 'plan-01', 'pcoh-02', 'comp-03', 'mod-09', 'tech-07', 1, date(4), '10:00', '16:00', 'Rascunho', 'Visita Manaus.', null],
+      ['penc-04', 'plan-01', 'pcoh-02', 'comp-03', 'mod-09', 'tech-07', 2, date(5), '10:00', '16:00', 'Rascunho', 'Checklist Belém.', null],
+      ['penc-05', 'plan-01', 'pcoh-03', 'comp-10', 'mod-07', 'tech-03', 1, date(6), '09:00', '17:00', 'Rascunho', 'Rotinas de automação.', null],
+      ['penc-06', 'plan-02', 'pcoh-04', 'comp-04', 'mod-04', 'tech-04', 1, date(2), '14:00', '17:00', 'Publicado', 'Portal em homologação.', 'coh-04']
+    ].forEach((row) => insertEncounter.run(...row, createdAt, createdAt));
+
+    const insertVersion = db.prepare('insert into planning_version (id, workspace_id, version_number, action, summary_json, created_at) values (?, ?, ?, ?, ?, ?)');
+    insertVersion.run('pver-01', 'plan-01', 1, 'created', JSON.stringify({ summary: 'Plano criado com quatro clientes críticos e seis encontros sugeridos.' }), createdAt);
+    insertVersion.run('pver-02', 'plan-02', 1, 'published', JSON.stringify({ summary: 'Agenda Q3 publicada para portal e calendário.' }), createdAt);
+
+    const insertColumn = db.prepare('insert or replace into implementation_kanban_column (id, title, color, position, created_at, updated_at) values (?, ?, ?, ?, ?, ?)');
+    [
+      ['kcol-triage', 'Triagem', '#64748b', 0],
+      ['kcol-risk', 'Risco / bloqueio', '#dc2626', 1],
+      ['kcol-doing', 'Em execução', '#b17613', 2],
+      ['kcol-waiting', 'Aguardando cliente', '#2563eb', 3],
+      ['kcol-done', 'Concluído', '#1c8b61', 4]
+    ].forEach((row) => insertColumn.run(...row, createdAt, createdAt));
+
+    const insertCard = db.prepare(`
+      insert into implementation_kanban_card (
+        id, title, description, status, column_id, client_name, license_name, module_name, technician_id,
+        subcategory, support_resolution, support_third_party_notes, support_handoff_target, support_handoff_date,
+        priority, due_date, position, created_at, updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    [
+      ['card-01', 'Metal Forte: conflito de agenda no turno B', 'Há sobreposição entre treinamento de agenda e parada programada da produção.', 'Doing', 'kcol-risk', 'Metal Forte', 'Velio Core Enterprise', 'Planejamento de capacidade', 'tech-03', 'Agenda', 'Replanejar com Renan como apoio e enviar nova grade.', 'Dependência: aprovação do gerente de produção.', 'Roberta Campos', date(1), 'Critica', date(1), 10],
+      ['card-02', 'NorteLog: acesso pendente unidade Belém', 'Usuários da filial Belém ainda não receberam liberação para o ambiente.', 'Todo', 'kcol-risk', 'NorteLog', 'Velio Field Ops NorteLog', 'Configuração do ambiente', 'tech-07', 'Acesso', 'Cobrar TI local e manter exceção documentada.', 'Pode exigir VPN do cliente.', 'Vanessa Farias', date(2), 'Alta', date(2), 20],
+      ['card-03', 'Conecta Saúde: homologar portal com hospitais', 'Três hospitais precisam validar agenda, certificados e chamados.', 'Doing', 'kcol-doing', 'Conecta Saúde', 'Velio Portal', 'Portal do cliente', 'tech-04', 'Portal', 'Enviar roteiro de homologação e coletar aceite.', null, 'Mônica Barcelos', date(4), 'Alta', date(4), 30],
+      ['card-04', 'Atlas: renovação vence em 5 dias', 'Licença mensal precisa de aceite antes da expansão da conta.', 'Todo', 'kcol-triage', 'Atlas Contabilidade', 'Velio Core Atlas', 'Governança de licenças', 'tech-05', 'Licenças', 'Enviar resumo de uso e proposta de renovação.', null, 'Sofia Mendes', date(5), 'Alta', date(5), 40],
+      ['card-05', 'Aurora: preparar rollout de 8 unidades', 'Cliente quer plano executivo para matriz e filiais.', 'Doing', 'kcol-doing', 'Grupo Aurora', 'Velio Portal Rede Aurora', 'Relatório executivo', 'tech-02', 'Rollout', 'Consolidar riscos, agenda e responsáveis.', null, 'Helena Mourão', date(3), 'Normal', date(3), 50],
+      ['card-06', 'Omnix: automações RevOps em validação', 'Regras de rotina semanal passam por teste com dados reais.', 'Doing', 'kcol-doing', 'Omnix Tech', 'Velio Automação Omnix', 'Rotinas e automações', 'tech-03', 'Automação', 'Validar gatilhos e preparar demo executiva.', null, 'Leandro Cunha', date(6), 'Critica', date(6), 60],
+      ['card-07', 'Zenith: certificados por participante', 'Turma corporativa precisa emitir certificados por módulo.', 'Todo', 'kcol-waiting', 'Zenith Educação', null, 'Portal e certificados', 'tech-06', 'Certificados', 'Aguardar lista final de participantes.', null, 'Mariana Seabra', date(8), 'Normal', date(8), 70],
+      ['card-08', 'Maralto: entrega executiva concluída', 'Relatório e próximos passos publicados no portal do cliente.', 'Done', 'kcol-done', 'Estúdio Maralto', null, 'Relatório executivo', 'tech-04', 'Entrega', 'Sem pendências.', null, 'Lívia Ramos', date(-1), 'Baixa', date(-1), 80],
+      ['card-09', 'Metal Forte: supervisor sem acesso no turno B', 'Acesso bloqueado antes do war room de produção. Cliente pediu retorno em até 2 horas.', 'Todo', 'kcol-risk', 'Metal Forte', 'Velio Core Enterprise', 'Portal do cliente', 'tech-01', 'Suporte', 'Resetar credenciais, validar SSO e registrar evidência no portal.', 'Possível bloqueio por política de AD do cliente.', 'Conosco', null, 'Critica', date(0), 90],
+      ['card-10', 'NorteLog: WhatsApp da filial Belém sem webhook', 'Mensagens do time de campo não estão abrindo chamado automaticamente.', 'Doing', 'kcol-doing', 'NorteLog', 'Velio Field Ops NorteLog', 'Suporte técnico e operação assistida', 'tech-07', 'Suporte', 'Reprocessar webhook, testar número da filial e orientar líder local.', 'Dependência de liberação do provedor de telefonia.', 'Sao_Paulo', date(1), 'Alta', date(1), 100],
+      ['card-11', 'Conecta Saúde: certificados não aparecem para hospital parceiro', 'Hospital Santa Clara validou agenda, mas não consegue baixar certificados individuais.', 'Todo', 'kcol-waiting', 'Conecta Saúde', 'Velio Portal', 'Portal do cliente', 'tech-04', 'Suporte', 'Aguardar lista final de participantes e republicar certificados.', null, 'Conosco', null, 'Alta', date(2), 110],
+      ['card-12', 'Aurora: dúvida executiva sobre rollout Campinas', 'Diretoria quer antecipar Campinas e pediu impacto em agenda, custo e equipe.', 'Todo', 'kcol-triage', 'Grupo Aurora', 'Velio Portal Rede Aurora', 'Expansão multiunidade', 'tech-02', 'Suporte', 'Responder com impacto executivo e sugestão de janela.', null, 'Conosco', null, 'Normal', date(3), 120],
+      ['card-13', 'Maralto: pós-entrega com ajuste visual no relatório', 'Cliente aprovou a entrega e solicitou apenas ajuste de capa no PDF executivo.', 'Done', 'kcol-done', 'Estúdio Maralto', null, 'Relatório executivo', 'tech-04', 'Suporte', 'Ajuste aplicado e confirmação enviada.', null, 'Conosco', null, 'Baixa', date(-1), 130]
+    ].forEach((row) => insertCard.run(...row, createdAt, createdAt));
+
+    const insertPortalClient = db.prepare(`
+      insert into portal_client (
+        id, company_id, slug, is_active, support_intro_text,
+        hidden_module_ids_json, module_date_overrides_json, module_status_overrides_json,
+        module_delivery_mode_overrides_json, created_at, updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    [
+      ['portal-01', 'comp-01', 'metal-forte', 1, 'Canal executivo da implantação Metal Forte. Priorize chamados críticos de agenda e produção.'],
+      ['portal-02', 'comp-02', 'grupo-aurora', 1, 'Portal do rollout Aurora: acompanhe unidades, agenda e próximos passos.'],
+      ['portal-03', 'comp-04', 'conecta-saude', 1, 'Homologação do portal hospitalar, certificados e chamados.'],
+      ['portal-04', 'comp-07', 'estudio-maralto', 1, 'Entrega concluída com relatório executivo e documentação.'],
+      ['portal-05', 'comp-03', 'nortelog', 1, 'Suporte de campo NorteLog: registre acessos, WhatsApp e ocorrências por filial.']
+    ].forEach((row) => insertPortalClient.run(...row, '[]', '{}', '{}', '{}', createdAt, createdAt));
+
+    const insertPortalUser = db.prepare(`
+      insert into portal_user (id, portal_client_id, username, password_hash, is_active, last_login_at, created_at, updated_at)
+      values (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    [
+      ['puser-01', 'portal-01', 'roberta.campos', date(-1)],
+      ['puser-02', 'portal-02', 'helena.mourao', date(-2)],
+      ['puser-03', 'portal-03', 'monica.barcelos', null],
+      ['puser-04', 'portal-04', 'livia.ramos', date(-1)],
+      ['puser-05', 'portal-05', 'vanessa.farias', date(-1)]
+    ].forEach((row) => insertPortalUser.run(row[0], row[1], row[2], hashInternalPasswordSeed('demo123'), 1, row[3], createdAt, createdAt));
+
+    const insertPortalTicket = db.prepare(`
+      insert into portal_ticket (
+        id, company_id, portal_user_id, title, description, priority, status, origin,
+        whatsapp_number, last_read_cliente_at, last_read_holand_at, kanban_card_id, created_at, updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    [
+      ['ticket-01', 'comp-01', 'puser-01', 'Supervisor do turno B não consegue acessar', 'O supervisor está sem acesso antes do war room de produção.', 'Critica', 'Aberto', 'portal_cliente', '+55 19 99123-7700', date(-1), null, 'card-09'],
+      ['ticket-02', 'comp-02', 'puser-02', 'Incluir filial Campinas no rollout', 'A diretoria pediu para antecipar Campinas no plano de unidades.', 'Alta', 'Em_atendimento', 'portal_cliente', '+55 11 98841-1200', date(-2), date(-1), 'card-12'],
+      ['ticket-03', 'comp-04', 'puser-03', 'Validar certificado de homologação', 'Hospital parceiro quer visualizar certificado por participante.', 'Normal', 'Aberto', 'portal_cliente', '+55 51 99144-5550', null, null, 'card-11'],
+      ['ticket-04', 'comp-07', 'puser-04', 'Entrega executiva aprovada', 'Relatório recebido e aprovado pela equipe Maralto.', 'Baixa', 'Resolvido', 'portal_cliente', '+55 48 99111-1910', date(-1), date(-1), 'card-13'],
+      ['ticket-05', 'comp-03', 'puser-05', 'WhatsApp da filial Belém não abre chamado', 'Mensagens do time de campo não estão entrando no Velio.', 'Alta', 'Em_atendimento', 'portal_cliente', '+55 91 99123-4410', date(-1), null, 'card-10']
+    ].forEach((row) => insertPortalTicket.run(...row, createdAt, createdAt));
+
+    const insertPortalMessage = db.prepare('insert into portal_ticket_message (id, ticket_id, author_type, author_label, body, created_at) values (?, ?, ?, ?, ?, ?)');
+    [
+      ['msg-01', 'ticket-01', 'Cliente', 'Roberta Campos', 'O turno B terá manutenção extraordinária. Precisamos ajustar a agenda até amanhã.', date(-1)],
+      ['msg-02', 'ticket-01', 'Holand', 'Paulo Reis', 'Recebido. Vou replanejar com apoio do Renan e enviar alternativa ainda hoje.', date(0)],
+      ['msg-03', 'ticket-02', 'Cliente', 'Helena Mourão', 'Podemos incluir Campinas já no primeiro lote do rollout?', date(-2)],
+      ['msg-04', 'ticket-03', 'Cliente', 'Mônica Barcelos', 'O hospital Santa Clara pediu certificado individual de homologação.', date(-1)],
+      ['msg-05', 'ticket-04', 'Cliente', 'Lívia Ramos', 'Relatório ficou ótimo. Pode marcar como aprovado.', date(-1)],
+      ['msg-06', 'ticket-05', 'Cliente', 'Vanessa Farias', 'O número de Belém recebe mensagem, mas nada aparece no painel de suporte.', date(-1)],
+      ['msg-07', 'ticket-05', 'Holand', 'Renan Oliveira', 'Estou reprocessando o webhook e vou validar com um chamado de teste ainda nesta janela.', date(0)]
+    ].forEach((row) => insertPortalMessage.run(...row));
+
+    const insertPortalAgenda = db.prepare(`
+      insert into portal_agenda_item (
+        id, portal_client_id, title, activity_type, start_date, end_date, all_day,
+        start_time, end_time, status, notes, created_at, updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    [
+      ['pag-01', 'portal-01', 'War room de agenda - Metal Forte', 'Implementacao', date(0), date(0), 0, '09:00', '12:00', 'Confirmada', 'Revisão com diretoria e produção.'],
+      ['pag-02', 'portal-01', 'Plantão de suporte crítico', 'Suporte', date(1), date(1), 0, '14:00', '17:00', 'Planejada', 'Canal aberto para ajustes pós-war room.'],
+      ['pag-03', 'portal-02', 'Comitê executivo de rollout', 'Reuniao', date(3), date(3), 0, '09:00', '10:30', 'Planejada', 'Apresentar plano de 8 unidades.'],
+      ['pag-04', 'portal-03', 'Homologação do portal hospitalar', 'Implementacao', date(2), date(2), 0, '14:00', '17:00', 'Planejada', 'Validação de agenda e certificados.'],
+      ['pag-05', 'portal-04', 'Entrega executiva publicada', 'Outro', date(-1), date(-1), 1, null, null, 'Concluida', 'Relatório aprovado pelo cliente.'],
+      ['pag-06', 'portal-05', 'Validação webhook Belém', 'Suporte', date(1), date(1), 0, '10:00', '11:00', 'Planejada', 'Teste assistido com líder local e equipe São Paulo.']
+    ].forEach((row) => insertPortalAgenda.run(...row, createdAt, createdAt));
+
+    const insertCandidate = db.prepare(`
+      insert into recruitment_candidate (
+        id, name, process_status, stage, strengths, concerns, specialties,
+        equipment_notes, career_plan, notes, created_at, updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    [
+      ['cand-01', 'Fernanda Prado', 'Em_processo', 'Teste técnico', 'Ótima comunicação com cliente e experiência em implantação B2B.', 'Precisa aprofundar rotinas de licença.', 'Portal, suporte, sucesso do cliente', 'Notebook próprio, disponibilidade remota.', 'Trilha para consultora de implantação.', 'Boa candidata para reforçar suporte e portal.', createdAt, createdAt],
+      ['cand-02', 'Rafael Diniz', 'Em_processo', 'Entrevista final', 'Forte em campo, redes e atendimento presencial.', 'Agenda limitada em sextas-feiras.', 'Campo, hardware, visitas técnicas', 'Carro próprio e equipamentos de rede.', 'Trilha para técnico de campo sênior.', 'Pode cobrir NorteLog e Metal Forte.', createdAt, createdAt],
+      ['cand-03', 'Camila Furtado', 'Aprovado', 'Oferta enviada', 'Perfil analítico, dados e automações.', 'Precisa onboarding do produto.', 'Automação, dados, RevOps', 'Setup remoto completo.', 'Trilha para especialista em automação.', 'Ideal para Omnix e clientes enterprise.', createdAt, createdAt],
+      ['cand-04', 'João Becker', 'Pausado', 'Triagem', 'Experiência em CAD/CAM e indústria.', 'Disponibilidade só noturna.', 'Indústria, TopSolid, treinamento', 'Aguardando teste de equipamento.', 'Banco de talentos técnico.', 'Manter para demandas futuras.', createdAt, createdAt]
+    ].forEach((row) => insertCandidate.run(...row));
   }
 
   if (shouldSeedFinanceDemoData()) {
