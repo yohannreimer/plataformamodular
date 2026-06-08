@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { db, initDb, resetDbConnection, seedDb } from '../db.js';
 import { assignTestDbPath } from './testDb.js';
+import { getFinanceReports } from '../finance/reports.js';
 
 function cleanupDbFiles(dbPath: string) {
   for (const suffix of ['', '-shm', '-wal']) {
@@ -160,9 +161,19 @@ test('production seed can opt in to finance demo data explicitly', () => {
 
     const payableCount = db.prepare('select count(*) as count from financial_payable').get() as { count: number };
     const receivableCount = db.prepare('select count(*) as count from financial_receivable').get() as { count: number };
+    const transactionCount = db.prepare('select count(*) as count from financial_transaction').get() as { count: number };
+    const costCenterCount = db.prepare('select count(*) as count from financial_cost_center').get() as { count: number };
+    const reports = getFinanceReports('org-holand', { preset: 'all' });
 
-    assert.ok(payableCount.count > 0);
-    assert.ok(receivableCount.count > 0);
+    assert.ok(payableCount.count >= 10);
+    assert.ok(receivableCount.count >= 10);
+    assert.ok(transactionCount.count >= 120);
+    assert.ok(costCenterCount.count >= 6);
+    assert.ok(reports.dre_by_period.length >= 12);
+    assert.ok(reports.realized_vs_projected.length >= 12);
+    assert.ok(reports.cost_center_results.length >= 5);
+    assert.ok(reports.income_by_category.length >= 5);
+    assert.ok(reports.expense_by_category.length >= 5);
   } finally {
     if (previousNodeEnv === undefined) {
       delete process.env.NODE_ENV;

@@ -48,7 +48,7 @@ const MONTHS_PT = [
 ];
 
 const MONTHS_SHORT_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-const REPORTS_DEFAULT_PERIOD: FinancePeriodState = { preset: 'month', from: '', to: '' };
+const REPORTS_DEFAULT_PERIOD: FinancePeriodState = { preset: 'all', from: '', to: '' };
 
 function monthRangeFromOffset(offset: number) {
   const base = new Date();

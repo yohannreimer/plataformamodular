@@ -2993,6 +2993,13 @@ function seedFinanceDemoData() {
   const nextTwoWeeks = getDateOffsetIso(today, 14);
   const nextMonth = getDateOffsetIso(today, 30);
   const nextTwoMonths = getDateOffsetIso(today, 60);
+  const currentMonth = new Date(`${today}T00:00:00.000Z`);
+  const dateInMonth = (monthOffset: number, day: number) => {
+    const value = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() + monthOffset, day));
+    return value.toISOString().slice(0, 10);
+  };
+  const periodFromOffset = (monthOffset: number) => dateInMonth(monthOffset, 1).slice(0, 7);
+  const monthLabel = (monthOffset: number) => periodFromOffset(monthOffset);
 
   db.prepare(`
     insert or ignore into company (id, name, status, notes, priority)
@@ -3020,10 +3027,17 @@ function seedFinanceDemoData() {
     ['fcat-servicos', 'Receita de Servicos', 'income'],
     ['fcat-bilheteria', 'Bilheteria', 'income'],
     ['fcat-patrocinio', 'Patrocinio', 'income'],
+    ['fcat-recorrencia', 'Receita Recorrente', 'income'],
+    ['fcat-implantacao', 'Implantacao e Setup', 'income'],
+    ['fcat-consultoria', 'Consultoria Financeira', 'income'],
     ['fcat-impostos', 'Impostos', 'expense'],
     ['fcat-operacional', 'Despesas Operacionais', 'expense'],
     ['fcat-cachê', 'Cache Artistico', 'expense'],
-    ['fcat-seguros', 'Seguros', 'expense']
+    ['fcat-seguros', 'Seguros', 'expense'],
+    ['fcat-marketing', 'Marketing e Vendas', 'expense'],
+    ['fcat-pessoas', 'Pessoas e Freelancers', 'expense'],
+    ['fcat-tecnologia', 'Tecnologia', 'expense'],
+    ['fcat-financeiras', 'Tarifas Financeiras', 'expense']
   ].forEach(([id, name, kind]) => {
     insertCategory.run(id, organizationId, companyId, name, kind, null, 1, createdAt, createdAt);
   });
@@ -3041,7 +3055,14 @@ function seedFinanceDemoData() {
     ['fent-bradesco', 'Bradesco', 'Bradesco Cultural', '60.746.948/0001-12', 'customer', 'cultural@bradesco.com', '+55 11 4000-3000'],
     ['fent-sesc', 'SESC Sao Paulo', 'SESC', '03.791.430/0001-83', 'customer', 'agenda@sescsp.org.br', '+55 11 4000-4000'],
     ['fent-porto', 'Porto Seguro', 'Porto Seguro', '61.198.164/0001-60', 'supplier', 'seguro@porto.com', '+55 11 4000-5000'],
-    ['fent-ecad', 'ECAD', 'ECAD', '00.474.973/0001-62', 'supplier', 'ecad@ecad.org.br', '+55 21 4000-6000']
+    ['fent-ecad', 'ECAD', 'ECAD', '00.474.973/0001-62', 'supplier', 'ecad@ecad.org.br', '+55 21 4000-6000'],
+    ['fent-natura', 'Natura Cosmeticos S.A.', 'Natura', '71.673.990/0001-77', 'customer', 'financeiro@natura.com', '+55 11 4444-1000'],
+    ['fent-magalu', 'Magazine Luiza S.A.', 'Magalu', '47.960.950/0001-21', 'customer', 'eventos@magalu.com', '+55 16 5555-2000'],
+    ['fent-vtex', 'VTEX Brasil Tecnologia', 'VTEX', '05.314.972/0001-74', 'customer', 'ap@vtex.com', '+55 21 5555-3000'],
+    ['fent-hubspot', 'HubSpot Brasil', 'HubSpot', '44.111.222/0001-90', 'supplier', 'billing@hubspot.com', '+55 11 5555-4000'],
+    ['fent-aws', 'Amazon Web Services Brasil', 'AWS', '23.412.321/0001-77', 'supplier', 'aws-br@amazon.com', '+55 11 5555-5000'],
+    ['fent-meta', 'Meta Ads Brasil', 'Meta Ads', '10.111.222/0001-66', 'supplier', 'billing@meta.com', '+55 11 5555-6000'],
+    ['fent-contabil', 'Atlas Contabilidade', 'Atlas Contabilidade', '33.555.777/0001-22', 'supplier', 'fiscal@atlascontabil.com', '+55 11 5555-7000']
   ].forEach(([id, legalName, tradeName, documentNumber, kind, email, phone]) => {
     insertEntity.run(id, organizationId, legalName, tradeName, documentNumber, kind, email, phone, 1, createdAt, createdAt);
   });
@@ -3053,7 +3074,10 @@ function seedFinanceDemoData() {
   [
     ['fcc-op', 'Operacao', 'OP'],
     ['fcc-com', 'Comercial', 'COM'],
-    ['fcc-fin', 'Financeiro', 'FIN']
+    ['fcc-fin', 'Financeiro', 'FIN'],
+    ['fcc-prod', 'Produto', 'PROD'],
+    ['fcc-marketing', 'Marketing', 'MKT'],
+    ['fcc-admin', 'Administrativo', 'ADM']
   ].forEach(([id, name, code]) => {
     insertCostCenter.run(id, organizationId, name, code, 1, createdAt, createdAt);
   });
@@ -3065,10 +3089,57 @@ function seedFinanceDemoData() {
   [
     ['fpm-pix', 'PIX', 'pix'],
     ['fpm-boleto', 'Boleto', 'boleto'],
-    ['fpm-transfer', 'Transferencia', 'transfer']
+    ['fpm-transfer', 'Transferencia', 'transfer'],
+    ['fpm-card', 'Cartao Corporativo', 'card']
   ].forEach(([id, name, kind]) => {
     insertPaymentMethod.run(id, organizationId, name, kind, 1, createdAt, createdAt);
   });
+
+  const insertDemoTransaction = db.prepare(`
+    insert or ignore into financial_transaction (
+      id, organization_id, company_id, financial_entity_id, financial_account_id, financial_category_id,
+      financial_cost_center_id, financial_payment_method_id, kind, status, amount_cents, issue_date,
+      due_date, settlement_date, competence_date, source, source_ref, note, created_by, created_at, updated_at, is_deleted
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'demo_seed', ?, ?, 'seed', ?, ?, 0)
+  `);
+  const addDemoTransaction = (input: {
+    id: string;
+    entityId: string | null;
+    accountId?: string;
+    categoryId: string | null;
+    costCenterId: string | null;
+    paymentMethodId?: string | null;
+    kind: 'income' | 'expense';
+    status: 'settled' | 'open' | 'planned' | 'overdue';
+    amountCents: number;
+    issueDate: string;
+    dueDate: string;
+    settlementDate: string | null;
+    competenceDate: string;
+    note: string;
+  }) => {
+    insertDemoTransaction.run(
+      input.id,
+      organizationId,
+      companyId,
+      input.entityId,
+      input.accountId ?? 'facc-itau',
+      input.categoryId,
+      input.costCenterId,
+      input.paymentMethodId ?? 'fpm-transfer',
+      input.kind,
+      input.status,
+      input.amountCents,
+      input.issueDate,
+      input.dueDate,
+      input.settlementDate,
+      input.competenceDate,
+      input.id,
+      input.note,
+      createdAt,
+      createdAt
+    );
+  };
 
   const insertTransaction = db.prepare(`
     insert or ignore into financial_transaction (
@@ -3109,6 +3180,95 @@ function seedFinanceDemoData() {
     );
   });
 
+  const historicalRevenuePlans = [
+    { entityId: 'fent-natura', categoryId: 'fcat-recorrencia', costCenterId: 'fcc-com', note: 'Mensalidade Natura', baseCents: 7600000 },
+    { entityId: 'fent-magalu', categoryId: 'fcat-servicos', costCenterId: 'fcc-op', note: 'Operacao Magalu Live', baseCents: 5400000 },
+    { entityId: 'fent-vtex', categoryId: 'fcat-consultoria', costCenterId: 'fcc-prod', note: 'Consultoria VTEX', baseCents: 4200000 },
+    { entityId: 'fent-sympla', categoryId: 'fcat-bilheteria', costCenterId: 'fcc-com', note: 'Bilheteria Sympla', baseCents: 3100000 }
+  ] as const;
+  const historicalExpensePlans = [
+    { entityId: 'fent-aws', categoryId: 'fcat-tecnologia', costCenterId: 'fcc-prod', paymentMethodId: 'fpm-card', note: 'Infraestrutura AWS', baseCents: 1180000 },
+    { entityId: 'fent-meta', categoryId: 'fcat-marketing', costCenterId: 'fcc-marketing', paymentMethodId: 'fpm-card', note: 'Campanhas Meta Ads', baseCents: 1650000 },
+    { entityId: 'fent-contabil', categoryId: 'fcat-financeiras', costCenterId: 'fcc-admin', paymentMethodId: 'fpm-boleto', note: 'BPO contabil e fiscal', baseCents: 920000 },
+    { entityId: 'fent-joao-silva', categoryId: 'fcat-pessoas', costCenterId: 'fcc-op', paymentMethodId: 'fpm-pix', note: 'Equipe freelancer operacional', baseCents: 2450000 },
+    { entityId: 'fent-ecad', categoryId: 'fcat-impostos', costCenterId: 'fcc-fin', paymentMethodId: 'fpm-boleto', note: 'Impostos e direitos', baseCents: 1360000 }
+  ] as const;
+
+  for (let monthOffset = -11; monthOffset <= 2; monthOffset += 1) {
+    const periodIndex = monthOffset + 11;
+    const future = monthOffset > 0;
+    const current = monthOffset === 0;
+    const revenueMultiplier = 1 + periodIndex * 0.045 + (monthOffset === 0 ? 0.08 : 0);
+    const expenseMultiplier = 1 + periodIndex * 0.025 + (current ? 0.04 : 0);
+    const revenueStatus = future ? 'planned' : current ? 'open' : 'settled';
+    const expenseStatus = future ? 'planned' : current ? 'open' : 'settled';
+
+    historicalRevenuePlans.forEach((plan, index) => {
+      const issueDate = dateInMonth(monthOffset, 2 + index * 3);
+      const dueDate = dateInMonth(monthOffset, 8 + index * 4);
+      const settlementDate = future || (current && index > 1) ? null : dateInMonth(monthOffset, 9 + index * 4);
+      const amountCents = Math.round((plan.baseCents + index * 320000) * revenueMultiplier);
+      addDemoTransaction({
+        id: `ftxn-demo-rev-${periodFromOffset(monthOffset)}-${index + 1}`,
+        entityId: plan.entityId,
+        categoryId: plan.categoryId,
+        costCenterId: plan.costCenterId,
+        paymentMethodId: index % 2 === 0 ? 'fpm-transfer' : 'fpm-pix',
+        kind: 'income',
+        status: settlementDate ? 'settled' : revenueStatus,
+        amountCents,
+        issueDate,
+        dueDate,
+        settlementDate,
+        competenceDate: issueDate,
+        note: `${plan.note} ${monthLabel(monthOffset)}`
+      });
+    });
+
+    if (monthOffset % 3 === 0 || current || future) {
+      const issueDate = dateInMonth(monthOffset, 5);
+      const dueDate = dateInMonth(monthOffset, 20);
+      const settlementDate = future ? null : dateInMonth(monthOffset, 21);
+      addDemoTransaction({
+        id: `ftxn-demo-setup-${periodFromOffset(monthOffset)}`,
+        entityId: monthOffset % 2 === 0 ? 'fent-bradesco' : 'fent-itau-bba',
+        categoryId: 'fcat-implantacao',
+        costCenterId: 'fcc-prod',
+        paymentMethodId: 'fpm-boleto',
+        kind: 'income',
+        status: settlementDate ? 'settled' : 'planned',
+        amountCents: Math.round(6800000 * revenueMultiplier),
+        issueDate,
+        dueDate,
+        settlementDate,
+        competenceDate: issueDate,
+        note: `Projeto de implantacao ${monthLabel(monthOffset)}`
+      });
+    }
+
+    historicalExpensePlans.forEach((plan, index) => {
+      const issueDate = dateInMonth(monthOffset, 4 + index * 2);
+      const dueDate = dateInMonth(monthOffset, 12 + index * 3);
+      const settlementDate = future || (current && index > 2) ? null : dateInMonth(monthOffset, 13 + index * 3);
+      const amountCents = Math.round((plan.baseCents + index * 180000) * expenseMultiplier);
+      addDemoTransaction({
+        id: `ftxn-demo-exp-${periodFromOffset(monthOffset)}-${index + 1}`,
+        entityId: plan.entityId,
+        categoryId: plan.categoryId,
+        costCenterId: plan.costCenterId,
+        paymentMethodId: plan.paymentMethodId,
+        kind: 'expense',
+        status: settlementDate ? 'settled' : expenseStatus,
+        amountCents,
+        issueDate,
+        dueDate,
+        settlementDate,
+        competenceDate: issueDate,
+        note: `${plan.note} ${monthLabel(monthOffset)}`
+      });
+    });
+  }
+
   const insertReceivable = db.prepare(`
     insert or ignore into financial_receivable (
       id, organization_id, company_id, financial_transaction_id, financial_entity_id, financial_account_id, financial_category_id,
@@ -3125,6 +3285,46 @@ function seedFinanceDemoData() {
     insertReceivable.run(row[0], organizationId, companyId, row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11], row[12], createdAt, createdAt);
   });
 
+  const insertDemoReceivable = db.prepare(`
+    insert or ignore into financial_receivable (
+      id, organization_id, company_id, financial_transaction_id, financial_entity_id, financial_account_id,
+      financial_category_id, financial_cost_center_id, financial_payment_method_id, customer_name,
+      description, amount_cents, received_amount_cents, status, issue_date, due_date, received_at,
+      source, source_ref, note, created_at, updated_at
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'demo_seed', ?, ?, ?, ?)
+  `);
+  [
+    ['frec-demo-001', null, 'fent-natura', 'facc-itau', 'fcat-recorrencia', 'fcc-com', 'fpm-boleto', 'Natura', 'Mensalidade enterprise em atraso', 9400000, 0, 'overdue', getDateOffsetIso(today, -18), getDateOffsetIso(today, -6), null, 'Cobrar sponsor financeiro ainda hoje'],
+    ['frec-demo-002', null, 'fent-magalu', 'facc-itau', 'fcat-servicos', 'fcc-op', 'fpm-transfer', 'Magalu', 'Operacao live commerce - parcela 2', 6900000, 2500000, 'partial', getDateOffsetIso(today, -12), getDateOffsetIso(today, 4), null, 'Pagamento parcial identificado no banco'],
+    ['frec-demo-003', null, 'fent-vtex', 'facc-itau', 'fcat-consultoria', 'fcc-prod', 'fpm-boleto', 'VTEX', 'Sprint de consultoria financeira', 5200000, 0, 'open', getDateOffsetIso(today, -3), getDateOffsetIso(today, 12), null, 'Contrato recorrente trimestral'],
+    ['frec-demo-004', null, 'fent-bradesco', 'facc-itau', 'fcat-patrocinio', 'fcc-com', 'fpm-boleto', 'Bradesco Cultural', 'Patrocinio Q3 aprovado', 13200000, 0, 'planned', today, getDateOffsetIso(today, 28), null, 'Previsao assinada pelo cliente'],
+    ['frec-demo-005', null, 'fent-itau-bba', 'facc-itau', 'fcat-implantacao', 'fcc-prod', 'fpm-transfer', 'Itau BBA', 'Setup modulo financeiro executivo', 7800000, 7800000, 'received', getDateOffsetIso(today, -10), getDateOffsetIso(today, -2), getDateOffsetIso(today, -1), 'Recebido e conciliado']
+  ].forEach((row) => {
+    insertDemoReceivable.run(
+      row[0],
+      organizationId,
+      companyId,
+      row[1],
+      row[2],
+      row[3],
+      row[4],
+      row[5],
+      row[6],
+      row[7],
+      row[8],
+      row[9],
+      row[10],
+      row[11],
+      row[12],
+      row[13],
+      row[14],
+      row[0],
+      row[15],
+      createdAt,
+      createdAt
+    );
+  });
+
   const insertPayable = db.prepare(`
     insert or ignore into financial_payable (
       id, organization_id, company_id, financial_transaction_id, financial_entity_id, financial_account_id, financial_category_id,
@@ -3139,6 +3339,46 @@ function seedFinanceDemoData() {
     ['fpay-005', null, 'fent-estudio-harmonia', 'facc-itau', 'fcat-operacional', 'Estudio Harmonia', 'Pagamento em breve', 8500000, 'planned', today, nextWeek, null, 'Planejado para a proxima semana']
   ].forEach((row) => {
     insertPayable.run(row[0], organizationId, companyId, row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11], row[12], createdAt, createdAt);
+  });
+
+  const insertDemoPayable = db.prepare(`
+    insert or ignore into financial_payable (
+      id, organization_id, company_id, financial_transaction_id, financial_entity_id, financial_account_id,
+      financial_category_id, financial_cost_center_id, financial_payment_method_id, supplier_name,
+      description, amount_cents, paid_amount_cents, status, issue_date, due_date, paid_at,
+      source, source_ref, note, created_at, updated_at
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'demo_seed', ?, ?, ?, ?)
+  `);
+  [
+    ['fpay-demo-001', null, 'fent-aws', 'facc-itau', 'fcat-tecnologia', 'fcc-prod', 'fpm-card', 'AWS', 'Infraestrutura cloud acima do previsto', 1680000, 0, 'overdue', getDateOffsetIso(today, -20), getDateOffsetIso(today, -4), null, 'Validar aumento de uso no dashboard AWS'],
+    ['fpay-demo-002', null, 'fent-meta', 'facc-itau', 'fcat-marketing', 'fcc-marketing', 'fpm-card', 'Meta Ads', 'Campanha performance junho', 2140000, 0, 'open', getDateOffsetIso(today, -5), getDateOffsetIso(today, 6), null, 'Pausar se CAC passar do limite'],
+    ['fpay-demo-003', null, 'fent-contabil', 'facc-itau', 'fcat-financeiras', 'fcc-admin', 'fpm-boleto', 'Atlas Contabilidade', 'Fechamento fiscal e folha', 1180000, 0, 'open', getDateOffsetIso(today, -2), getDateOffsetIso(today, 10), null, 'Obrigacao mensal'],
+    ['fpay-demo-004', null, 'fent-joao-silva', 'facc-itau', 'fcat-pessoas', 'fcc-op', 'fpm-pix', 'Joao Silva', 'Freelancers operacao de evento', 3860000, 1200000, 'partial', getDateOffsetIso(today, -8), getDateOffsetIso(today, 3), null, 'Restante apos aprovacao do evento'],
+    ['fpay-demo-005', null, 'fent-porto', 'facc-itau', 'fcat-seguros', 'fcc-admin', 'fpm-boleto', 'Porto Seguro', 'Renovacao seguro equipamentos', 2440000, 0, 'planned', today, getDateOffsetIso(today, 31), null, 'Despesa prevista para proximo ciclo']
+  ].forEach((row) => {
+    insertDemoPayable.run(
+      row[0],
+      organizationId,
+      companyId,
+      row[1],
+      row[2],
+      row[3],
+      row[4],
+      row[5],
+      row[6],
+      row[7],
+      row[8],
+      row[9],
+      row[10],
+      row[11],
+      row[12],
+      row[13],
+      row[14],
+      row[0],
+      row[15],
+      createdAt,
+      createdAt
+    );
   });
 
   const insertImportJob = db.prepare(`
