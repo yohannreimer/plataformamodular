@@ -12,6 +12,7 @@ import './styles.css';
 const clerkPublishableKey = readRuntimeConfig('VITE_CLERK_PUBLISHABLE_KEY')
   ?? readRuntimeConfig('CLERK_PUBLISHABLE_KEY');
 const localAuthBypass = isLocalAuthBypassEnabled(window.location.hostname);
+const isTestEnvironment = (import.meta as unknown as { env?: { MODE?: string } }).env?.MODE === 'test';
 
 document.title = productBrowserTitleForHostname(window.location.hostname);
 
@@ -23,18 +24,42 @@ function MissingClerkConfig() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    {clerkPublishableKey || localAuthBypass ? (
-      <ClerkProvider publishableKey={clerkPublishableKey ?? 'pk_demo_local'} signInUrl="/" afterSignOutUrl="/">
+export function AppRoot({
+  clerkPublishableKey,
+  localAuthBypass
+}: {
+  clerkPublishableKey: string | undefined;
+  localAuthBypass: boolean;
+}) {
+  if (localAuthBypass && !clerkPublishableKey) {
+    return (
+      <BrowserRouter>
+        <ToastProvider>
+          <App />
+        </ToastProvider>
+      </BrowserRouter>
+    );
+  }
+
+  if (clerkPublishableKey) {
+    return (
+      <ClerkProvider publishableKey={clerkPublishableKey} signInUrl="/" afterSignOutUrl="/">
         <BrowserRouter>
           <ToastProvider>
             <App />
           </ToastProvider>
         </BrowserRouter>
       </ClerkProvider>
-    ) : (
-      <MissingClerkConfig />
-    )}
-  </React.StrictMode>
-);
+    );
+  }
+
+  return <MissingClerkConfig />;
+}
+
+if (!isTestEnvironment) {
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <AppRoot clerkPublishableKey={clerkPublishableKey} localAuthBypass={localAuthBypass} />
+    </React.StrictMode>
+  );
+}
