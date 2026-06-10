@@ -175,6 +175,7 @@ test('transactions page renders ledger filters, supports editing and deleting ro
   expect(within(filtersPanel).getByLabelText('Status')).toBeInTheDocument();
   expect(within(filtersPanel).getByLabelText('Tipo')).toBeInTheDocument();
   expect(screen.getByRole('table', { name: 'Ledger financeiro' })).toBeInTheDocument();
+  expect(screen.getByRole('region', { name: 'Resumo do ledger' })).toBeInTheDocument();
 
   const rowButton = await screen.findByRole('button', { name: /mensalidade de serviços/i });
   rowButton.click();
