@@ -1258,27 +1258,33 @@ export function FinancePayablesPage() {
           <div>
             <section className="finance-mobile-dense-section" aria-label="Contas a pagar mobile">
               <FinanceMobileList ariaLabel="Contas a pagar em cards">
-                {visibleItems.map((item) => (
-                  <FinanceMobileListCard
-                    key={item.id}
-                    title={item.description || item.supplier_name || 'Conta a pagar'}
-                    amount={formatCurrency(item.amount_cents)}
-                    amountTone="expense"
-                    status={payableStatusLabel(item.status)}
-                    date={formatDate(item.due_date || item.paid_at || item.issue_date)}
-                    meta={[item.supplier_name || 'Sem fornecedor', item.financial_account_name || 'Sem conta']}
-                    onClick={() => {
-                      if (!canWrite || item.status === 'paid' || item.status === 'canceled') return;
-                      startEditingPayable(item);
-                    }}
-                  />
-                ))}
+                {visibleItems.map((item) => {
+                  const canEdit = canWrite && item.status !== 'paid' && item.status !== 'canceled';
+                  return (
+                    <FinanceMobileListCard
+                      key={item.id}
+                      title={item.description || item.supplier_name || 'Conta a pagar'}
+                      amount={formatCurrency(item.amount_cents)}
+                      amountTone="expense"
+                      status={payableStatusLabel(item.status)}
+                      date={formatDate(item.due_date || item.paid_at || item.issue_date)}
+                      meta={[item.supplier_name || 'Sem fornecedor', item.financial_account_name || 'Sem conta']}
+                      disabled={!canEdit}
+                      onClick={() => {
+                        if (!canEdit) return;
+                        startEditingPayable(item);
+                      }}
+                    />
+                  );
+                })}
               </FinanceMobileList>
             </section>
-            <PayablesListGroup title="Atrasados" items={overdueFiltered} emptyText="Nenhuma obrigação em atraso." accentColor="#ef4444" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingPayable} />
-            <PayablesListGroup title="Vencendo hoje" items={today} emptyText="Nenhum vencimento hoje." accentColor="#ea580c" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingPayable} />
-            <PayablesListGroup title="Próximos vencimentos" items={upcoming} emptyText="Nenhuma obrigação próxima." accentColor="#2563eb" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingPayable} />
-            <PayablesListGroup title="Liquidados" items={paid} emptyText="Nenhuma baixa registrada." accentColor="#059669" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingPayable} />
+            <div className="finance-desktop-dense-section">
+              <PayablesListGroup title="Atrasados" items={overdueFiltered} emptyText="Nenhuma obrigação em atraso." accentColor="#ef4444" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingPayable} />
+              <PayablesListGroup title="Vencendo hoje" items={today} emptyText="Nenhum vencimento hoje." accentColor="#ea580c" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingPayable} />
+              <PayablesListGroup title="Próximos vencimentos" items={upcoming} emptyText="Nenhuma obrigação próxima." accentColor="#2563eb" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingPayable} />
+              <PayablesListGroup title="Liquidados" items={paid} emptyText="Nenhuma baixa registrada." accentColor="#059669" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingPayable} />
+            </div>
           </div>
         </div>
       </div>

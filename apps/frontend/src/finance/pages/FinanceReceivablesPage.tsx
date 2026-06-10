@@ -1259,27 +1259,33 @@ export function FinanceReceivablesPage() {
           <div>
             <section className="finance-mobile-dense-section" aria-label="Recebíveis mobile">
               <FinanceMobileList ariaLabel="Recebíveis em cards">
-                {visibleItems.map((item) => (
-                  <FinanceMobileListCard
-                    key={item.id}
-                    title={item.description || item.customer_name || 'Conta a receber'}
-                    amount={formatCurrency(item.amount_cents)}
-                    amountTone="income"
-                    status={receivableStatusLabel(item.status)}
-                    date={formatDate(item.due_date || item.received_at || item.issue_date)}
-                    meta={[item.customer_name || 'Sem cliente', item.financial_account_name || 'Sem conta']}
-                    onClick={() => {
-                      if (!canWrite || item.status === 'received' || item.status === 'canceled') return;
-                      startEditingReceivable(item);
-                    }}
-                  />
-                ))}
+                {visibleItems.map((item) => {
+                  const canEdit = canWrite && item.status !== 'received' && item.status !== 'canceled';
+                  return (
+                    <FinanceMobileListCard
+                      key={item.id}
+                      title={item.description || item.customer_name || 'Conta a receber'}
+                      amount={formatCurrency(item.amount_cents)}
+                      amountTone="income"
+                      status={receivableStatusLabel(item.status)}
+                      date={formatDate(item.due_date || item.received_at || item.issue_date)}
+                      meta={[item.customer_name || 'Sem cliente', item.financial_account_name || 'Sem conta']}
+                      disabled={!canEdit}
+                      onClick={() => {
+                        if (!canEdit) return;
+                        startEditingReceivable(item);
+                      }}
+                    />
+                  );
+                })}
               </FinanceMobileList>
             </section>
-            <ReceivablesListGroup title="Atrasados" items={overdue} emptyText="Nenhum recebível em atraso." accentColor="#ef4444" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingReceivable} />
-            <ReceivablesListGroup title="Vencendo hoje" items={today} emptyText="Nenhum vencimento hoje." accentColor="#ea580c" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingReceivable} />
-            <ReceivablesListGroup title="Próximos vencimentos" items={upcoming} emptyText="Nenhum recebível próximo." accentColor="#2563eb" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingReceivable} />
-            <ReceivablesListGroup title="Liquidados" items={received} emptyText="Nenhuma baixa registrada." accentColor="#059669" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingReceivable} />
+            <div className="finance-desktop-dense-section">
+              <ReceivablesListGroup title="Atrasados" items={overdue} emptyText="Nenhum recebível em atraso." accentColor="#ef4444" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingReceivable} />
+              <ReceivablesListGroup title="Vencendo hoje" items={today} emptyText="Nenhum vencimento hoje." accentColor="#ea580c" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingReceivable} />
+              <ReceivablesListGroup title="Próximos vencimentos" items={upcoming} emptyText="Nenhum recebível próximo." accentColor="#2563eb" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingReceivable} />
+              <ReceivablesListGroup title="Liquidados" items={received} emptyText="Nenhuma baixa registrada." accentColor="#059669" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingReceivable} />
+            </div>
           </div>
         </div>
       </div>

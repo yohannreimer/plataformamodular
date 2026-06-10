@@ -1,5 +1,5 @@
 import userEvent from '@testing-library/user-event';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { FinanceReconciliationPage } from '../pages/FinanceReconciliationPage';
 
@@ -423,7 +423,7 @@ beforeEach(() => {
 });
 
 test('reconciliation page highlights pending statement matches as an inbox', async () => {
-  render(<FinanceReconciliationPage />);
+  const { container } = render(<FinanceReconciliationPage />);
 
   expect(await screen.findByText('Pendências de conciliação')).toBeInTheDocument();
   expect(await screen.findByRole('region', { name: 'Conciliação mobile' })).toBeInTheDocument();
@@ -435,7 +435,9 @@ test('reconciliation page highlights pending statement matches as an inbox', asy
   expect(screen.getByRole('tab', { name: /Dados incompletos/i })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: /Importados/i })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: /Matches recentes/i })).toBeInTheDocument();
-  expect(screen.getAllByText('Fornecedor Atlas').length).toBeGreaterThan(0);
+  const desktopDenseSection = container.querySelector('.finance-desktop-dense-section');
+  expect(desktopDenseSection).not.toBeNull();
+  expect(within(desktopDenseSection as HTMLElement).getByText('Fornecedor Atlas')).toBeInTheDocument();
   expect(screen.getAllByText('Regra aprendida').length).toBeGreaterThan(0);
   expect(screen.getByText('Regras aprendidas')).toBeInTheDocument();
   expect(screen.queryByText(/contraparte/i)).not.toBeInTheDocument();

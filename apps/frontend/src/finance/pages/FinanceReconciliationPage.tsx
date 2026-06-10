@@ -791,67 +791,68 @@ export function FinanceReconciliationPage() {
                             entry.financial_account_name || 'Conta sem nome',
                             firstSuggestion?.financial_entity_name || firstSuggestion?.description || 'Sem sugestão automática'
                           ]}
-                          onClick={() => undefined}
                         />
                       );
                     })}
                   </FinanceMobileList>
                 </section>
-                {tab === 'fila' ? (
-                  queueEntries.length > 0 ? (
-                    queueEntries.map((entry) => (
-                      <InboxEntryCard
-                        key={entry.id}
-                        entry={entry}
-                        onMatch={handleApplyMatch}
-                        onCreateTransaction={handleCreateTransactionFromStatement}
-                        matching={matchingEntryId === entry.id}
-                        creating={creatingEntryId === entry.id}
-                      />
-                    ))
-                  ) : (
-                    <div style={{ padding: '32px 0' }}>
-                      <FinanceEmptyState title="Nenhuma pendência nesta aba." />
-                    </div>
-                  )
-                ) : null}
+                <div className="finance-desktop-dense-section">
+                  {tab === 'fila' ? (
+                    queueEntries.length > 0 ? (
+                      queueEntries.map((entry) => (
+                        <InboxEntryCard
+                          key={entry.id}
+                          entry={entry}
+                          onMatch={handleApplyMatch}
+                          onCreateTransaction={handleCreateTransactionFromStatement}
+                          matching={matchingEntryId === entry.id}
+                          creating={creatingEntryId === entry.id}
+                        />
+                      ))
+                    ) : (
+                      <div style={{ padding: '32px 0' }}>
+                        <FinanceEmptyState title="Nenhuma pendência nesta aba." />
+                      </div>
+                    )
+                  ) : null}
 
-                {tab === 'quality' ? (
-                  qualityIssues.length > 0 ? (
-                    qualityIssues.map((issue) => (
-                      <QualityIssueCard
-                        key={issue.id}
-                        issue={issue}
-                        onReview={handleOpenQualityIssue}
-                        applying={correctingIssueId === issue.id}
-                      />
-                    ))
-                  ) : (
-                    <div style={{ padding: '32px 0' }}>
-                      <FinanceEmptyState title="Nenhum dado incompleto nesta aba." />
-                    </div>
-                  )
-                ) : null}
+                  {tab === 'quality' ? (
+                    qualityIssues.length > 0 ? (
+                      qualityIssues.map((issue) => (
+                        <QualityIssueCard
+                          key={issue.id}
+                          issue={issue}
+                          onReview={handleOpenQualityIssue}
+                          applying={correctingIssueId === issue.id}
+                        />
+                      ))
+                    ) : (
+                      <div style={{ padding: '32px 0' }}>
+                        <FinanceEmptyState title="Nenhum dado incompleto nesta aba." />
+                      </div>
+                    )
+                  ) : null}
 
-                {tab === 'importados' ? (
-                  importedJobs.length > 0 ? (
-                    importedJobs.map((job) => <ImportRow key={job.id} job={job} />)
-                  ) : (
-                    <div style={{ padding: '32px 0' }}>
-                      <FinanceEmptyState title="Nenhum importado nesta aba." />
-                    </div>
-                  )
-                ) : null}
+                  {tab === 'importados' ? (
+                    importedJobs.length > 0 ? (
+                      importedJobs.map((job) => <ImportRow key={job.id} job={job} />)
+                    ) : (
+                      <div style={{ padding: '32px 0' }}>
+                        <FinanceEmptyState title="Nenhum importado nesta aba." />
+                      </div>
+                    )
+                  ) : null}
 
-                {tab === 'matches' ? (
-                  recentMatches.length > 0 ? (
-                    recentMatches.map((match) => <RecentMatchRow key={match.id} match={match} />)
-                  ) : (
-                    <div style={{ padding: '32px 0' }}>
-                      <FinanceEmptyState title="Nenhum match recente nesta aba." />
-                    </div>
-                  )
-                ) : null}
+                  {tab === 'matches' ? (
+                    recentMatches.length > 0 ? (
+                      recentMatches.map((match) => <RecentMatchRow key={match.id} match={match} />)
+                    ) : (
+                      <div style={{ padding: '32px 0' }}>
+                        <FinanceEmptyState title="Nenhum match recente nesta aba." />
+                      </div>
+                    )
+                  ) : null}
+                </div>
               </div>
             </Card>
 

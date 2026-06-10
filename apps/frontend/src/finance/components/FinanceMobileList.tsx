@@ -18,7 +18,8 @@ export function FinanceMobileListCard({
   date,
   meta,
   footer,
-  onClick
+  onClick,
+  disabled = false
 }: {
   title: string;
   amount: string;
@@ -27,32 +28,44 @@ export function FinanceMobileListCard({
   date?: string;
   meta?: string[];
   footer?: ReactNode;
-  onClick: () => void;
+  onClick?: () => void;
+  disabled?: boolean;
 }) {
   const visibleMeta = meta?.filter(Boolean) ?? [];
+  const content = (
+    <>
+      <span className="finance-mobile-list-card__head">
+        <strong>{title}</strong>
+        <span className={`finance-mobile-list-card__amount finance-mobile-list-card__amount--${amountTone}`}>{amount}</span>
+      </span>
+      {status || date ? (
+        <span className="finance-mobile-list-card__subhead">
+          {status ? <span>{status}</span> : null}
+          {date ? <span>{date}</span> : null}
+        </span>
+      ) : null}
+      {visibleMeta.length > 0 ? (
+        <span className="finance-mobile-list-card__meta">
+          {visibleMeta.map((item) => (
+            <small key={item}>{item}</small>
+          ))}
+        </span>
+      ) : null}
+      {footer ? <span className="finance-mobile-list-card__footer">{footer}</span> : null}
+    </>
+  );
 
   return (
     <article className="finance-mobile-list-card" role="listitem">
-      <button type="button" className="finance-mobile-list-card__button" onClick={onClick}>
-        <span className="finance-mobile-list-card__head">
-          <strong>{title}</strong>
-          <span className={`finance-mobile-list-card__amount finance-mobile-list-card__amount--${amountTone}`}>{amount}</span>
-        </span>
-        {status || date ? (
-          <span className="finance-mobile-list-card__subhead">
-            {status ? <span>{status}</span> : null}
-            {date ? <span>{date}</span> : null}
-          </span>
-        ) : null}
-        {visibleMeta.length > 0 ? (
-          <span className="finance-mobile-list-card__meta">
-            {visibleMeta.map((item) => (
-              <small key={item}>{item}</small>
-            ))}
-          </span>
-        ) : null}
-        {footer ? <span className="finance-mobile-list-card__footer">{footer}</span> : null}
-      </button>
+      {onClick ? (
+        <button type="button" className="finance-mobile-list-card__button" onClick={onClick} disabled={disabled}>
+          {content}
+        </button>
+      ) : (
+        <div className="finance-mobile-list-card__button finance-mobile-list-card__button--static">
+          {content}
+        </div>
+      )}
     </article>
   );
 }

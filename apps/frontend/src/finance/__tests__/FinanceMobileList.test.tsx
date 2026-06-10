@@ -27,6 +27,43 @@ test('mobile list renders actionable financial cards', () => {
   expect(onSelect).toHaveBeenCalledTimes(1);
 });
 
+test('mobile list card supports disabled actionable state', () => {
+  const onSelect = vi.fn();
+  render(
+    <FinanceMobileList ariaLabel="Lançamentos mobile">
+      <FinanceMobileListCard
+        title="Recebível liquidado"
+        amount="R$ 300,00"
+        status="Recebido"
+        disabled
+        onClick={onSelect}
+      />
+    </FinanceMobileList>
+  );
+
+  const item = screen.getByRole('button', { name: /recebível liquidado/i });
+  expect(item).toBeDisabled();
+  fireEvent.click(item);
+  expect(onSelect).not.toHaveBeenCalled();
+});
+
+test('mobile list card without onClick renders static content', () => {
+  render(
+    <FinanceMobileList ariaLabel="Conciliação mobile">
+      <FinanceMobileListCard
+        title="Fornecedor Atlas"
+        amount="R$ 1.245,00"
+        status="Com sugestão"
+        meta={['Banco principal']}
+      />
+    </FinanceMobileList>
+  );
+
+  expect(screen.queryByRole('button', { name: /fornecedor atlas/i })).not.toBeInTheDocument();
+  expect(screen.getByText('Fornecedor Atlas')).toBeInTheDocument();
+  expect(screen.getByText('R$ 1.245,00')).toBeInTheDocument();
+});
+
 test('mobile filter sheet opens supplied filter controls', () => {
   render(
     <FinanceMobileFilterSheet title="Filtros do ledger" activeCount={2}>

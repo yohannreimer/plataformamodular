@@ -9505,10 +9505,33 @@
   display: none;
 }
 
+.finance-desktop-dense-section {
+  display: block;
+}
+
+.finance-mobile-list-card__button:not(:disabled):not(.finance-mobile-list-card__button--static) {
+  cursor: pointer;
+}
+
+.finance-mobile-list-card__button:disabled,
+.finance-mobile-list-card__button--static {
+  background: #f8fafc;
+  box-shadow: none;
+  cursor: default;
+}
+
+.finance-mobile-list-card__button:disabled {
+  opacity: 0.68;
+}
+
 @media (max-width: 760px) {
   .finance-mobile-dense-section {
     display: block;
     margin-bottom: 14px;
+  }
+
+  .finance-desktop-dense-section {
+    display: none;
   }
 
   .finance-ops-page table,
