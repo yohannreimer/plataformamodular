@@ -647,7 +647,7 @@ export function FinanceFloatingQuickLauncher() {
       <button
         type="button"
         className="finance-floating-launcher__fab"
-        aria-label={open ? 'Fechar lançamento rápido' : 'Abrir lançamento rápido'}
+        aria-label={open ? 'Recolher lançamento rápido' : 'Abrir lançamento rápido'}
         onClick={toggleOpen}
       >
         <span aria-hidden="true">{open ? '×' : '+'}</span>
