@@ -168,17 +168,32 @@ beforeEach(() => {
 });
 
 test('transactions controller loads catalog, ledger and totals', async () => {
+  const { financeApi } = await import('../api');
   const { result } = renderHook(() => useFinanceTransactionsController());
 
   await waitFor(() => {
     expect(result.current.loading).toBe(false);
+    expect(result.current.catalogLoading).toBe(false);
   });
 
   expect(result.current.transactions).toHaveLength(1);
   expect(result.current.filteredTransactions).toHaveLength(1);
+  expect(result.current.accounts).toHaveLength(1);
+  expect(result.current.accounts[0]).toEqual(expect.objectContaining({ name: 'Conta Operacional' }));
+  expect(result.current.categories).toHaveLength(1);
+  expect(result.current.categories[0]).toEqual(expect.objectContaining({ name: 'Despesas Operacionais' }));
+  expect(result.current.entities).toHaveLength(1);
+  expect(result.current.entities[0]).toEqual(
+    expect.objectContaining({
+      trade_name: 'Alpha Serviços'
+    })
+  );
   expect(result.current.totals.out).toBe(12500);
   expect(result.current.canWrite).toBe(true);
   expect(result.current.canApprove).toBe(true);
+  expect(financeApi.listAccounts).toHaveBeenCalled();
+  expect(financeApi.listCategories).toHaveBeenCalled();
+  expect(financeApi.listEntities).toHaveBeenCalled();
 });
 
 test('transactions controller auto-fills settlement date for settled creates', async () => {
