@@ -1,4 +1,4 @@
-import { useCallback, useEffect, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
 type FinanceBottomSheetProps = {
@@ -12,6 +12,21 @@ type FinanceBottomSheetProps = {
   onClose: () => void;
 };
 
+const focusableSelector = [
+  'a[href]',
+  'button:not([disabled])',
+  'textarea:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])'
+].join(',');
+
+function getFocusableElements(container: HTMLElement) {
+  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+    (element) => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true'
+  );
+}
+
 export function FinanceBottomSheet({
   open,
   title,
@@ -22,6 +37,10 @@ export function FinanceBottomSheet({
   confirmClose,
   onClose
 }: FinanceBottomSheetProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
   const requestClose = useCallback(() => {
     if (dirty && confirmClose && !confirmClose()) {
       return;
@@ -31,9 +50,57 @@ export function FinanceBottomSheet({
 
   useEffect(() => {
     if (!open) return;
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    (closeButtonRef.current ?? dialogRef.current)?.focus();
+
+    return () => {
+      const previousFocus = previousFocusRef.current;
+      previousFocusRef.current = null;
+      if (previousFocus && document.contains(previousFocus)) {
+        previousFocus.focus();
+      }
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         requestClose();
+        return;
+      }
+
+      if (event.key !== 'Tab') {
+        return;
+      }
+
+      const dialog = dialogRef.current;
+      if (!dialog) {
+        return;
+      }
+
+      const focusableElements = getFocusableElements(dialog);
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const firstFocusable = focusableElements[0];
+      const lastFocusable = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+
+      if (event.shiftKey) {
+        if (activeElement === firstFocusable || !dialog.contains(activeElement)) {
+          event.preventDefault();
+          lastFocusable.focus();
+        }
+        return;
+      }
+
+      if (activeElement === lastFocusable || !dialog.contains(activeElement)) {
+        event.preventDefault();
+        firstFocusable.focus();
       }
     }
     document.addEventListener('keydown', handleKeyDown);
@@ -45,7 +112,7 @@ export function FinanceBottomSheet({
   }
 
   return (
-    <div className="finance-bottom-sheet" role="dialog" aria-modal="true" aria-label={title}>
+    <div ref={dialogRef} className="finance-bottom-sheet" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
       <div className="finance-bottom-sheet__scrim" onClick={requestClose} />
       <section className="finance-bottom-sheet__panel">
         <div className="finance-bottom-sheet__handle" aria-hidden="true" />
@@ -54,7 +121,13 @@ export function FinanceBottomSheet({
             <h2>{title}</h2>
             {description ? <p>{description}</p> : null}
           </div>
-          <button type="button" className="finance-bottom-sheet__close" aria-label={`Fechar ${title}`} onClick={requestClose}>
+          <button
+            type="button"
+            ref={closeButtonRef}
+            className="finance-bottom-sheet__close"
+            aria-label={`Fechar ${title}`}
+            onClick={requestClose}
+          >
             <X size={18} aria-hidden="true" />
           </button>
         </header>

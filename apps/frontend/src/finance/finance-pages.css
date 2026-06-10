@@ -9030,6 +9030,7 @@
   right: 0;
   bottom: 0;
   display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   max-height: min(88dvh, 720px);
   overflow: hidden;
   border-radius: 22px 22px 0 0;
