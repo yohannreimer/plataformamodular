@@ -133,6 +133,10 @@ export function buildFormFromTransaction(transaction: FinanceTransaction): Trans
   };
 }
 
+function transactionFormsEqual(left: TransactionFormState, right: TransactionFormState) {
+  return (Object.keys(initialForm) as Array<keyof TransactionFormState>).every((key) => left[key] === right[key]);
+}
+
 export function getRowLabel(transaction: FinanceTransaction) {
   return transaction.note?.trim() || transaction.financial_entity_name || 'Movimentação financeira';
 }
@@ -283,6 +287,17 @@ export function useFinanceTransactionsController() {
   const selectedIsEditing = mode === 'create' && Boolean(draftTransactionId);
   const submitLabel = selectedIsEditing ? 'Salvar alteração' : 'Salvar lançamento';
   const currentDraftSource = draftTransactionId ? transactions.find((transaction) => transaction.id === draftTransactionId) ?? null : null;
+  const isFormDirty = useMemo(() => {
+    if (mode !== 'create') {
+      return false;
+    }
+
+    if (selectedIsEditing) {
+      return currentDraftSource ? !transactionFormsEqual(form, buildFormFromTransaction(currentDraftSource)) : false;
+    }
+
+    return !transactionFormsEqual(form, initialForm);
+  }, [currentDraftSource, form, mode, selectedIsEditing]);
 
   function updateFilter<K extends keyof FilterState>(key: K, value: FilterState[K]) {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -325,7 +340,7 @@ export function useFinanceTransactionsController() {
   async function submitTransaction() {
     if (!canWrite) {
       setError('Você não tem permissão para alterar movimentações.');
-      return;
+      return false;
     }
 
     const nextSettlementDate =
@@ -349,7 +364,7 @@ export function useFinanceTransactionsController() {
 
     if (payload.amount_cents <= 0) {
       setError('Informe um valor maior que zero para o lançamento.');
-      return;
+      return false;
     }
 
     try {
@@ -372,8 +387,10 @@ export function useFinanceTransactionsController() {
       }
 
       setReloadNonce((current) => current + 1);
+      return true;
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Falha ao salvar movimentação.');
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -381,7 +398,7 @@ export function useFinanceTransactionsController() {
 
   async function deleteSelectedTransaction() {
     if (!selectedTransaction || !canApprove || selectedTransaction.is_deleted) {
-      return;
+      return false;
     }
 
     const confirmed =
@@ -390,7 +407,7 @@ export function useFinanceTransactionsController() {
         : window.confirm('Excluir esta movimentação do ledger ativo? Ela continuará visível no histórico de excluídos.');
 
     if (!confirmed) {
-      return;
+      return false;
     }
 
     try {
@@ -403,8 +420,10 @@ export function useFinanceTransactionsController() {
       setMode('view');
       setReloadNonce((current) => current + 1);
       setMessage('Lançamento removido do ledger ativo. O histórico auditável agora inclui itens excluídos.');
+      return true;
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'Falha ao excluir movimentação.');
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -428,6 +447,7 @@ export function useFinanceTransactionsController() {
     selectedTransaction,
     currentDraftSource,
     selectedIsEditing,
+    isFormDirty,
     submitLabel,
     filteredCount,
     totals,

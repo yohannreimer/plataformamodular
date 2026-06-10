@@ -290,3 +290,20 @@ test('transactions page exposes a mobile ledger view with filter and detail shee
   await user.click(screen.getByRole('button', { name: /abrir filtros do ledger/i }));
   expect(screen.getByRole('dialog', { name: 'Filtros do ledger' })).toBeInTheDocument();
 });
+
+test('transactions mobile detail sheet closes after successful delete', async () => {
+  const { financeApi } = await import('../api');
+  const user = (await import('@testing-library/user-event')).default.setup();
+  render(<FinanceTransactionsPage forceMobile />);
+
+  await screen.findByRole('list', { name: 'Ledger financeiro mobile' });
+  await user.click(screen.getByRole('button', { name: /mensalidade de serviços/i }));
+  expect(screen.getByRole('dialog', { name: 'Detalhes do lançamento' })).toBeInTheDocument();
+
+  await user.click(screen.getByRole('button', { name: 'Excluir' }));
+
+  await waitFor(() => {
+    expect(financeApi.deleteTransaction).toHaveBeenCalledWith('ftxn-1');
+    expect(screen.queryByRole('dialog', { name: 'Detalhes do lançamento' })).not.toBeInTheDocument();
+  });
+});

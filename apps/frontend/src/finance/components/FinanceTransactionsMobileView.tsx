@@ -22,6 +22,7 @@ export function FinanceTransactionsMobileView({ controller }: { controller: Fina
     filters,
     form,
     canWrite,
+    canApprove,
     selectedTransaction,
     filteredTransactions,
     filteredCount,
@@ -33,6 +34,7 @@ export function FinanceTransactionsMobileView({ controller }: { controller: Fina
     message,
     submitLabel,
     selectedIsEditing,
+    isFormDirty,
     updateFilter,
     updateForm,
     startCreateMode,
@@ -43,6 +45,12 @@ export function FinanceTransactionsMobileView({ controller }: { controller: Fina
     setMode,
     setDraftTransactionId
   } = controller;
+
+  function closeDetailSheet() {
+    setDetailOpen(false);
+    setMode('view');
+    setDraftTransactionId(null);
+  }
 
   function openTransaction(transactionId: string) {
     setSelectedTransactionId(transactionId);
@@ -56,9 +64,21 @@ export function FinanceTransactionsMobileView({ controller }: { controller: Fina
     setDetailOpen(true);
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void submitTransaction();
+    const saved = await submitTransaction();
+
+    if (saved) {
+      closeDetailSheet();
+    }
+  }
+
+  async function handleDelete() {
+    const deleted = await deleteSelectedTransaction();
+
+    if (deleted) {
+      closeDetailSheet();
+    }
   }
 
   const activeFilterCount = [filters.type !== 'todos', filters.status !== 'todos', Boolean(filters.search.trim())].filter(Boolean).length;
@@ -106,7 +126,7 @@ export function FinanceTransactionsMobileView({ controller }: { controller: Fina
             </select>
           </label>
         </FinanceMobileFilterSheet>
-        {loading ? <span className="finance-mobile-loading">Atualizando...</span> : null}
+        {loading ? <span className="finance-mobile-loading">Atualizando…</span> : null}
       </div>
 
       <FinanceMobileList ariaLabel="Ledger financeiro mobile">
@@ -127,13 +147,9 @@ export function FinanceTransactionsMobileView({ controller }: { controller: Fina
       <FinanceBottomSheet
         open={detailOpen}
         title={editing ? (selectedIsEditing ? 'Editar lançamento' : 'Novo lançamento') : 'Detalhes do lançamento'}
-        dirty={editing && Boolean(form.note || form.amount)}
+        dirty={isFormDirty}
         confirmClose={() => window.confirm('Fechar sem salvar este lançamento?')}
-        onClose={() => {
-          setDetailOpen(false);
-          setMode('view');
-          setDraftTransactionId(null);
-        }}
+        onClose={closeDetailSheet}
       >
         {editing ? (
           <form className="finance-mobile-transaction-form" onSubmit={handleSubmit}>
@@ -148,7 +164,7 @@ export function FinanceTransactionsMobileView({ controller }: { controller: Fina
             <label><span>Vencimento</span><input aria-label="Data de vencimento" type="date" value={form.due_date} onChange={(event) => updateForm('due_date', event.target.value)} disabled={!canWrite || submitting} /></label>
             <label><span>Competência</span><input aria-label="Data de competência" type="date" value={form.competence_date} onChange={(event) => updateForm('competence_date', event.target.value)} disabled={!canWrite || submitting} /></label>
             <label><span>Baixa</span><input aria-label="Data da baixa" type="date" value={form.settlement_date || (form.status === 'settled' ? todayIso() : '')} onChange={(event) => updateForm('settlement_date', event.target.value)} disabled={!canWrite || submitting} /></label>
-            <button type="submit" className="finance-mobile-primary-action" disabled={!canWrite || submitting}>{submitting ? 'Salvando...' : submitLabel}</button>
+            <button type="submit" className="finance-mobile-primary-action" disabled={!canWrite || submitting}>{submitting ? 'Salvando…' : submitLabel}</button>
           </form>
         ) : selectedTransaction ? (
           <div className="finance-mobile-transaction-detail">
@@ -162,7 +178,7 @@ export function FinanceTransactionsMobileView({ controller }: { controller: Fina
             </dl>
             <div className="finance-mobile-sheet-actions">
               <button type="button" onClick={startEditMode} disabled={!canWrite}>Editar linha</button>
-              <button type="button" onClick={() => void deleteSelectedTransaction()} disabled={submitting}>Excluir</button>
+              <button type="button" onClick={() => void handleDelete()} disabled={!canApprove || submitting || selectedTransaction.is_deleted}>Excluir</button>
             </div>
           </div>
         ) : null}
