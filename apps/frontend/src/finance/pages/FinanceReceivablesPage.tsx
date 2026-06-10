@@ -11,6 +11,7 @@ import {
 } from '../api';
 import { FinanceEntityCombobox } from '../components/FinanceEntityCombobox';
 import { FINANCE_QUICK_LAUNCH_CREATED_EVENT, type FinanceQuickLaunchCreatedDetail } from '../components/financeFloatingEvents';
+import { FinanceMobileList, FinanceMobileListCard } from '../components/FinanceMobileList';
 import { FinancePeriodFilter } from '../components/FinancePeriodFilter';
 import { FinanceMono } from '../components/FinancePrimitives';
 import { resolveFinancePeriodWindow, useFinancePeriod } from '../hooks/useFinancePeriod';
@@ -458,6 +459,19 @@ function StatusBadge({ status }: { status: FinanceReceivableStatus }) {
 
   const tone = map[status] ?? map.open;
   return <Badge color={tone.color} bg={tone.bg}>{tone.label}</Badge>;
+}
+
+function receivableStatusLabel(status: FinanceReceivableStatus) {
+  const labels: Record<FinanceReceivableStatus, string> = {
+    planned: 'Planejado',
+    open: 'Pendente',
+    partial: 'Parcial',
+    received: 'Recebido',
+    overdue: 'Atrasado',
+    canceled: 'Cancelado'
+  };
+
+  return labels[status] ?? 'Pendente';
 }
 
 function entityName(entity: FinanceEntity) {
@@ -1243,6 +1257,22 @@ export function FinanceReceivablesPage() {
           </div>
 
           <div>
+            <section className="finance-mobile-dense-section" aria-label="Recebíveis mobile">
+              <FinanceMobileList ariaLabel="Recebíveis em cards">
+                {visibleItems.map((item) => (
+                  <FinanceMobileListCard
+                    key={item.id}
+                    title={item.description || item.customer_name || 'Conta a receber'}
+                    amount={formatCurrency(item.amount_cents)}
+                    amountTone="income"
+                    status={receivableStatusLabel(item.status)}
+                    date={formatDate(item.due_date || item.received_at || item.issue_date)}
+                    meta={[item.customer_name || 'Sem cliente', item.financial_account_name || 'Sem conta']}
+                    onClick={() => startEditingReceivable(item)}
+                  />
+                ))}
+              </FinanceMobileList>
+            </section>
             <ReceivablesListGroup title="Atrasados" items={overdue} emptyText="Nenhum recebível em atraso." accentColor="#ef4444" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingReceivable} />
             <ReceivablesListGroup title="Vencendo hoje" items={today} emptyText="Nenhum vencimento hoje." accentColor="#ea580c" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingReceivable} />
             <ReceivablesListGroup title="Próximos vencimentos" items={upcoming} emptyText="Nenhum recebível próximo." accentColor="#2563eb" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingReceivable} />

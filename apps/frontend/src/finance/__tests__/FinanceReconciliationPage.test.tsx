@@ -426,6 +426,7 @@ test('reconciliation page highlights pending statement matches as an inbox', asy
   render(<FinanceReconciliationPage />);
 
   expect(await screen.findByText('Pendências de conciliação')).toBeInTheDocument();
+  expect(await screen.findByRole('region', { name: 'Conciliação mobile' })).toBeInTheDocument();
   expect(screen.queryByText('Radar')).not.toBeInTheDocument();
   expect(screen.getByText('Sugestões de match')).toBeInTheDocument();
   expect(screen.getByText('Extratos importados')).toBeInTheDocument();
@@ -434,7 +435,7 @@ test('reconciliation page highlights pending statement matches as an inbox', asy
   expect(screen.getByRole('tab', { name: /Dados incompletos/i })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: /Importados/i })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: /Matches recentes/i })).toBeInTheDocument();
-  expect(screen.getByText('Fornecedor Atlas')).toBeInTheDocument();
+  expect(screen.getAllByText('Fornecedor Atlas').length).toBeGreaterThan(0);
   expect(screen.getAllByText('Regra aprendida').length).toBeGreaterThan(0);
   expect(screen.getByText('Regras aprendidas')).toBeInTheDocument();
   expect(screen.queryByText(/contraparte/i)).not.toBeInTheDocument();

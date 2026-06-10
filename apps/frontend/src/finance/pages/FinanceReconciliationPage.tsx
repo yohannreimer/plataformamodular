@@ -14,6 +14,7 @@ import {
   type FinanceReconciliationMatch,
   type FinanceReconciliationSuggestion
 } from '../api';
+import { FinanceMobileList, FinanceMobileListCard } from '../components/FinanceMobileList';
 import { FinanceOfxImportModal } from '../components/FinanceOfxImportModal';
 import { FinancePeriodFilter } from '../components/FinancePeriodFilter';
 import { FinanceQualityBadge } from '../components/FinanceQualityBadge';
@@ -774,6 +775,28 @@ export function FinanceReconciliationPage() {
               </div>
 
               <div style={{ padding: '0 0 4px' }}>
+                <section className="finance-mobile-dense-section" aria-label="Conciliação mobile">
+                  <FinanceMobileList ariaLabel="Itens de conciliação em cards">
+                    {queueEntries.map((entry) => {
+                      const firstSuggestion = entry.suggested_matches[0];
+                      return (
+                        <FinanceMobileListCard
+                          key={entry.id}
+                          title={entry.description || entry.financial_account_name || 'Item de conciliação'}
+                          amount={formatCurrency(entry.amount_cents)}
+                          amountTone={entry.amount_cents >= 0 ? 'income' : 'expense'}
+                          status={entry.suggested_matches.length > 0 ? 'Com sugestão' : 'Sem sugestão'}
+                          date={formatDate(entry.posted_at || entry.statement_date)}
+                          meta={[
+                            entry.financial_account_name || 'Conta sem nome',
+                            firstSuggestion?.financial_entity_name || firstSuggestion?.description || 'Sem sugestão automática'
+                          ]}
+                          onClick={() => undefined}
+                        />
+                      );
+                    })}
+                  </FinanceMobileList>
+                </section>
                 {tab === 'fila' ? (
                   queueEntries.length > 0 ? (
                     queueEntries.map((entry) => (

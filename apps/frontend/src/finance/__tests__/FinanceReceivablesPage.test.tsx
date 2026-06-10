@@ -1,6 +1,7 @@
 import userEvent from '@testing-library/user-event';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { FinanceReceivablesPage } from '../pages/FinanceReceivablesPage';
 import { todayIso } from '../utils/financeFormatters';
 
@@ -123,11 +124,20 @@ beforeEach(() => {
   });
 });
 
+function renderReceivablesPage() {
+  return render(
+    <MemoryRouter initialEntries={['/m/financeiro/receivables']}>
+      <FinanceReceivablesPage />
+    </MemoryRouter>
+  );
+}
+
 test('receivables page renders and submits a new receivable', async () => {
   const user = userEvent.setup();
-  render(<FinanceReceivablesPage />);
+  renderReceivablesPage();
 
   expect(await screen.findByRole('heading', { name: 'Rotina operacional de recebíveis' })).toBeInTheDocument();
+  expect(await screen.findByRole('region', { name: 'Recebíveis mobile' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Nova conta a receber' })).toBeInTheDocument();
   expect(screen.getAllByText('Atrasados').length).toBeGreaterThan(0);
 
@@ -169,14 +179,14 @@ test('receivables page shows the shared empty state when a bucket has no rows', 
     receivables: []
   });
 
-  render(<FinanceReceivablesPage />);
+  renderReceivablesPage();
 
   expect(await screen.findByText('Nenhum recebível em atraso.')).toBeInTheDocument();
 });
 
 test('receivables page sends received_at when status is recebido', async () => {
   const user = userEvent.setup();
-  render(<FinanceReceivablesPage />);
+  renderReceivablesPage();
 
   expect(await screen.findByRole('heading', { name: 'Rotina operacional de recebíveis' })).toBeInTheDocument();
 
@@ -199,7 +209,7 @@ test('receivables page sends received_at when status is recebido', async () => {
 
 test('receivables page creates a continuous monthly recurrence from the full form', async () => {
   const user = userEvent.setup();
-  render(<FinanceReceivablesPage />);
+  renderReceivablesPage();
 
   expect(await screen.findByRole('heading', { name: 'Rotina operacional de recebíveis' })).toBeInTheDocument();
 
@@ -225,7 +235,7 @@ test('receivables page creates a continuous monthly recurrence from the full for
 
 test('receivables page creates installments from the full form', async () => {
   const user = userEvent.setup();
-  render(<FinanceReceivablesPage />);
+  renderReceivablesPage();
 
   expect(await screen.findByRole('heading', { name: 'Rotina operacional de recebíveis' })).toBeInTheDocument();
 
@@ -262,7 +272,7 @@ test('receivables page creates installments from the full form', async () => {
 
 test('receivables page runs daily operation actions', async () => {
   const user = userEvent.setup();
-  render(<FinanceReceivablesPage />);
+  renderReceivablesPage();
 
   await user.selectOptions(await screen.findByLabelText('Período financeiro'), 'all');
   await user.click(await screen.findByRole('button', { name: 'Baixar' }));
@@ -281,7 +291,7 @@ test('receivables page runs daily operation actions', async () => {
 
 test('receivables page can create and use a missing customer from the form', async () => {
   const user = userEvent.setup();
-  render(<FinanceReceivablesPage />);
+  renderReceivablesPage();
 
   expect(await screen.findByRole('heading', { name: 'Rotina operacional de recebíveis' })).toBeInTheDocument();
 
@@ -301,7 +311,7 @@ test('receivables page can create and use a missing customer from the form', asy
 
 test('receivables page clears the form back to the initial state', async () => {
   const user = userEvent.setup();
-  render(<FinanceReceivablesPage />);
+  renderReceivablesPage();
 
   expect(await screen.findByRole('heading', { name: 'Rotina operacional de recebíveis' })).toBeInTheDocument();
 

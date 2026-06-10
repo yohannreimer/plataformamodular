@@ -141,6 +141,7 @@ test('payables page renders and submits a new payable', async () => {
   renderPayablesPage();
 
   expect(await screen.findByRole('heading', { name: 'Rotina operacional de obrigações' })).toBeInTheDocument();
+  expect(await screen.findByRole('region', { name: 'Contas a pagar mobile' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Nova conta a pagar' })).toBeInTheDocument();
   expect(screen.getAllByText('Atrasados').length).toBeGreaterThan(0);
 

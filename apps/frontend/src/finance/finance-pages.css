@@ -9500,3 +9500,46 @@
     cursor: not-allowed;
   }
 }
+
+.finance-mobile-dense-section {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .finance-mobile-dense-section {
+    display: block;
+    margin-bottom: 14px;
+  }
+
+  .finance-ops-page table,
+  .finance-reconciliation-page table {
+    display: none;
+  }
+
+  .finance-ops-page > div > header,
+  .finance-ops-page .finance-page-header,
+  .finance-reconciliation-page .finance-page-header {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .finance-ops-page > div > header h1,
+  .finance-ops-page .finance-page-header__copy h1,
+  .finance-reconciliation-page .finance-page-header__copy h1 {
+    font-size: 24px !important;
+    line-height: 1.12 !important;
+  }
+
+  .finance-ops-page > div > header p,
+  .finance-ops-page .finance-page-header__copy p,
+  .finance-reconciliation-page .finance-page-header__copy p {
+    font-size: 13px !important;
+  }
+
+  .finance-ops-page .finance-panel,
+  .finance-reconciliation-page .finance-panel {
+    border-radius: 14px !important;
+  }
+}

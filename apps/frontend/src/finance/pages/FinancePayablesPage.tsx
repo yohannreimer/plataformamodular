@@ -11,6 +11,7 @@ import {
 } from '../api';
 import { FinanceEntityCombobox } from '../components/FinanceEntityCombobox';
 import { FINANCE_QUICK_LAUNCH_CREATED_EVENT, type FinanceQuickLaunchCreatedDetail } from '../components/financeFloatingEvents';
+import { FinanceMobileList, FinanceMobileListCard } from '../components/FinanceMobileList';
 import { FinancePeriodFilter } from '../components/FinancePeriodFilter';
 import { FinanceMono } from '../components/FinancePrimitives';
 import { resolveFinancePeriodWindow, useFinancePeriod } from '../hooks/useFinancePeriod';
@@ -457,6 +458,19 @@ function StatusBadge({ status }: { status: FinancePayableStatus }) {
 
   const tone = map[status] ?? map.open;
   return <Badge color={tone.color} bg={tone.bg}>{tone.label}</Badge>;
+}
+
+function payableStatusLabel(status: FinancePayableStatus) {
+  const labels: Record<FinancePayableStatus, string> = {
+    planned: 'Planejado',
+    open: 'Pendente',
+    partial: 'Parcial',
+    paid: 'Pago',
+    overdue: 'Atrasado',
+    canceled: 'Cancelado'
+  };
+
+  return labels[status] ?? 'Pendente';
 }
 
 function entityName(entity: FinanceEntity) {
@@ -1242,6 +1256,22 @@ export function FinancePayablesPage() {
           </div>
 
           <div>
+            <section className="finance-mobile-dense-section" aria-label="Contas a pagar mobile">
+              <FinanceMobileList ariaLabel="Contas a pagar em cards">
+                {visibleItems.map((item) => (
+                  <FinanceMobileListCard
+                    key={item.id}
+                    title={item.description || item.supplier_name || 'Conta a pagar'}
+                    amount={formatCurrency(item.amount_cents)}
+                    amountTone="expense"
+                    status={payableStatusLabel(item.status)}
+                    date={formatDate(item.due_date || item.paid_at || item.issue_date)}
+                    meta={[item.supplier_name || 'Sem fornecedor', item.financial_account_name || 'Sem conta']}
+                    onClick={() => startEditingPayable(item)}
+                  />
+                ))}
+              </FinanceMobileList>
+            </section>
             <PayablesListGroup title="Atrasados" items={overdueFiltered} emptyText="Nenhuma obrigação em atraso." accentColor="#ef4444" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingPayable} />
             <PayablesListGroup title="Vencendo hoje" items={today} emptyText="Nenhum vencimento hoje." accentColor="#ea580c" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingPayable} />
             <PayablesListGroup title="Próximos vencimentos" items={upcoming} emptyText="Nenhuma obrigação próxima." accentColor="#2563eb" canWrite={canWrite} onOperation={handleOperation} onEdit={startEditingPayable} />
