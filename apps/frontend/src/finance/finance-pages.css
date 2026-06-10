@@ -9516,6 +9516,12 @@
     display: none;
   }
 
+  .finance-ops-grid,
+  .finance-reconciliation-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
   .finance-ops-page > div > header,
   .finance-ops-page .finance-page-header,
   .finance-reconciliation-page .finance-page-header {

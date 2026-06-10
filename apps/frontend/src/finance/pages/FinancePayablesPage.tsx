@@ -957,7 +957,7 @@ export function FinancePayablesPage() {
       <div style={pageStyle}>
         <PageHeader action={<FinancePeriodFilter value={period} onChange={setPeriod} scopeLabel="Filtro local da rotina" />} />
 
-        <div style={gridStyle}>
+        <div className="finance-ops-grid" style={gridStyle}>
           <div>
             <Card>
               <SectionTitle>Nova conta a pagar</SectionTitle>
@@ -1267,7 +1267,10 @@ export function FinancePayablesPage() {
                     status={payableStatusLabel(item.status)}
                     date={formatDate(item.due_date || item.paid_at || item.issue_date)}
                     meta={[item.supplier_name || 'Sem fornecedor', item.financial_account_name || 'Sem conta']}
-                    onClick={() => startEditingPayable(item)}
+                    onClick={() => {
+                      if (!canWrite || item.status === 'paid' || item.status === 'canceled') return;
+                      startEditingPayable(item);
+                    }}
                   />
                 ))}
               </FinanceMobileList>

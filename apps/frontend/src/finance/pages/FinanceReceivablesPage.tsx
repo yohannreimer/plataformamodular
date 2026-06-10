@@ -958,7 +958,7 @@ export function FinanceReceivablesPage() {
       <div style={pageStyle}>
         <PageHeader action={<FinancePeriodFilter value={period} onChange={setPeriod} scopeLabel="Filtro local da rotina" />} />
 
-        <div style={gridStyle}>
+        <div className="finance-ops-grid" style={gridStyle}>
           <div>
             <Card>
               <SectionTitle>Nova conta a receber</SectionTitle>
@@ -1268,7 +1268,10 @@ export function FinanceReceivablesPage() {
                     status={receivableStatusLabel(item.status)}
                     date={formatDate(item.due_date || item.received_at || item.issue_date)}
                     meta={[item.customer_name || 'Sem cliente', item.financial_account_name || 'Sem conta']}
-                    onClick={() => startEditingReceivable(item)}
+                    onClick={() => {
+                      if (!canWrite || item.status === 'received' || item.status === 'canceled') return;
+                      startEditingReceivable(item);
+                    }}
                   />
                 ))}
               </FinanceMobileList>

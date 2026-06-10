@@ -734,7 +734,7 @@ export function FinanceReconciliationPage() {
               {inlineError}
             </div>
           ) : null}
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: 16, alignItems: 'start' }}>
+          <div className="finance-reconciliation-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: 16, alignItems: 'start' }}>
             <Card padding={0}>
               <div style={{ padding: '16px 20px 0' }}>
                 <SectionTitle>Pendências de conciliação</SectionTitle>
