@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { hasAnyPermission, internalSessionStore } from '../auth/session';
 import { FinanceFloatingQuickLauncher } from './components/FinanceFloatingQuickLauncher';
+import { FinanceMobileNavigation } from './components/FinanceMobileNavigation';
 import { FinanceWhisperFlow } from './components/FinanceWhisperFlow';
 import { FinanceSidebar } from './components/FinanceSidebar';
 import { useFinanceContext } from './hooks/useFinanceContext';
@@ -10,9 +11,11 @@ export function FinanceWorkspace({ onLogout }: { onLogout?: () => void }) {
   const { context } = useFinanceContext();
   const session = internalSessionStore.read();
   const canWrite = hasAnyPermission(session?.user, ['finance.write']);
+  const userLabel = session?.user.display_name || session?.user.username || 'usuário';
 
   return (
     <div className="finance-shell">
+      <FinanceMobileNavigation userLabel={userLabel} onLogout={onLogout} />
       <FinanceSidebar context={context} onLogout={onLogout} />
       <main className="finance-workspace__main">
         <Outlet />
