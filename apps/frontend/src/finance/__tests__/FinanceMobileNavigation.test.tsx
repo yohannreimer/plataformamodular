@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { financeNavigationItems } from '../components/FinanceSidebar';
@@ -100,6 +101,29 @@ test('focuses the close button when the mobile overflow menu opens', () => {
 
   const dialog = screen.getByRole('dialog', { name: 'Mais áreas do financeiro' });
   expect(within(dialog).getByRole('button', { name: 'Fechar áreas financeiras' })).toHaveFocus();
+});
+
+test('keeps tab focus inside the mobile overflow menu', async () => {
+  const user = userEvent.setup();
+
+  render(
+    <MemoryRouter initialEntries={['/m/financeiro/overview']}>
+      <FinanceMobileNavigation userLabel="Financeiro" onLogout={vi.fn()} />
+    </MemoryRouter>
+  );
+
+  const navigation = screen.getByRole('navigation', { name: 'Atalhos financeiros mobile' });
+  await user.click(within(navigation).getByRole('button', { name: /mais áreas/i }));
+
+  const dialog = screen.getByRole('dialog', { name: 'Mais áreas do financeiro' });
+  const closeButton = within(dialog).getByRole('button', { name: 'Fechar áreas financeiras' });
+  expect(closeButton).toHaveFocus();
+
+  await user.tab({ shift: true });
+  expect(within(dialog).getByRole('button', { name: 'Sair' })).toHaveFocus();
+
+  await user.tab();
+  expect(closeButton).toHaveFocus();
 });
 
 test('closes the mobile overflow menu with Escape', () => {

@@ -33,6 +33,7 @@ export function FinanceMobileNavigation({ userLabel, onLogout }: FinanceMobileNa
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const headerMenuButtonRef = useRef<HTMLButtonElement>(null);
   const bottomMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const morePanelRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const lastTriggerRef = useRef<HTMLButtonElement | null>(null);
 
@@ -82,6 +83,40 @@ export function FinanceMobileNavigation({ userLabel, onLogout }: FinanceMobileNa
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         closeMore();
+        return;
+      }
+
+      if (event.key !== 'Tab') {
+        return;
+      }
+
+      const panel = morePanelRef.current;
+      if (!panel) return;
+
+      const focusableElements = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((element) => !element.hasAttribute('disabled') && element.tabIndex !== -1);
+
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
       }
     };
 
@@ -158,10 +193,12 @@ export function FinanceMobileNavigation({ userLabel, onLogout }: FinanceMobileNa
             onClick={closeMore}
           />
           <section
+            ref={morePanelRef}
             className="finance-mobile-more__panel"
             role="dialog"
             aria-modal="true"
             aria-label="Mais áreas do financeiro"
+            tabIndex={-1}
           >
             <div className="finance-mobile-more__header">
               <div>

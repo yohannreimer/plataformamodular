@@ -1177,18 +1177,22 @@
 
 @media (max-width: 760px) {
   .finance-whisper-flow {
-    right: 14px;
-    bottom: 72px;
+    right: auto;
+    bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 84px);
+    left: 14px;
+    justify-items: start;
   }
 
   .finance-whisper-flow--capsule {
     right: auto;
     left: 50%;
-    bottom: 18px;
+    bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 84px);
+    justify-items: center;
   }
 
   .finance-whisper-flow__panel {
     width: calc(100vw - 28px);
+    max-height: calc(100vh - 186px);
   }
 
   .finance-whisper-flow__compact {

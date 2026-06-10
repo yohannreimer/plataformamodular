@@ -480,7 +480,7 @@ test('reconciliation page switches tabs and applies a suggested match', async ()
   });
 
   await user.click(screen.getByRole('tab', { name: /Na fila/i }));
-  await user.click(screen.getByRole('button', { name: 'Match' }));
+  await user.click(within(mobileRegion).getByRole('button', { name: 'Aplicar sugestão' }));
 
   await waitFor(() => {
     expect(financeApi.createReconciliation).toHaveBeenCalledWith(
@@ -501,7 +501,8 @@ test('reconciliation page creates a settled transaction from a statement entry',
   render(<FinanceReconciliationPage />);
 
   expect(await screen.findByText('Pendências de conciliação')).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Criar lançamento conciliado' }));
+  const mobileRegion = screen.getByRole('region', { name: 'Conciliação mobile' });
+  await user.click(within(mobileRegion).getByRole('button', { name: 'Criar lançamento' }));
 
   const { financeApi } = await import('../api');
   await waitFor(() => {

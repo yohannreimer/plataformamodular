@@ -785,6 +785,7 @@ export function FinanceReconciliationPage() {
                       <FinanceMobileList ariaLabel="Itens de conciliação em cards">
                         {queueEntries.map((entry) => {
                           const firstSuggestion = entry.suggested_matches[0];
+                          const isBusy = matchingEntryId === entry.id || creatingEntryId === entry.id;
                           return (
                             <FinanceMobileListCard
                               key={entry.id}
@@ -797,6 +798,26 @@ export function FinanceReconciliationPage() {
                                 entry.financial_account_name || 'Conta sem nome',
                                 firstSuggestion?.financial_entity_name || firstSuggestion?.description || 'Sem sugestão automática'
                               ]}
+                              footer={(
+                                <span className="finance-mobile-list-card__actions">
+                                  {firstSuggestion ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleApplyMatch(entry, firstSuggestion)}
+                                      disabled={isBusy}
+                                    >
+                                      {matchingEntryId === entry.id ? 'Aplicando...' : 'Aplicar sugestão'}
+                                    </button>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCreateTransactionFromStatement(entry)}
+                                    disabled={isBusy}
+                                  >
+                                    {creatingEntryId === entry.id ? 'Criando...' : 'Criar lançamento'}
+                                  </button>
+                                </span>
+                              )}
                             />
                           );
                         })}
