@@ -36,8 +36,9 @@ export const financeNavigationItems = [
 ] as const;
 
 export type FinanceNavigationItem = (typeof financeNavigationItems)[number];
+export type FinanceNavigationIconName = FinanceNavigationItem['icon'];
 
-const FINANCE_ICON_MAP: Record<string, LucideIcon> = {
+const FINANCE_ICON_MAP: Record<FinanceNavigationIconName, LucideIcon> = {
   overview: LayoutGrid,
   transactions: ArrowLeftRight,
   receivables: ArrowDownToLine,
@@ -50,9 +51,8 @@ const FINANCE_ICON_MAP: Record<string, LucideIcon> = {
   advanced: Settings2
 };
 
-export function FinanceNavigationGlyph({ name }: { name: string }) {
+export function FinanceNavigationGlyph({ name }: { name: FinanceNavigationIconName }) {
   const Icon = FINANCE_ICON_MAP[name];
-  if (!Icon) return null;
   return <Icon size={16} strokeWidth={1.75} aria-hidden="true" />;
 }
 
