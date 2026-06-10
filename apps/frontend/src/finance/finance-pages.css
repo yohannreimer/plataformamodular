@@ -9099,3 +9099,121 @@
 .finance-bottom-sheet__footer > * {
   flex: 1 1 0;
 }
+
+.finance-mobile-list {
+  display: grid;
+  gap: 10px;
+}
+
+.finance-mobile-list-card {
+  min-width: 0;
+}
+
+.finance-mobile-list-card__button {
+  display: grid;
+  width: 100%;
+  min-height: 96px;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #dbe5f0;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #0f172a;
+  text-align: left;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+}
+
+.finance-mobile-list-card__head,
+.finance-mobile-list-card__subhead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 10px;
+}
+
+.finance-mobile-list-card__head strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.finance-mobile-list-card__amount {
+  flex-shrink: 0;
+  font-family: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.finance-mobile-list-card__amount--income {
+  color: #047857;
+}
+
+.finance-mobile-list-card__amount--expense {
+  color: #dc2626;
+}
+
+.finance-mobile-list-card__amount--neutral {
+  color: #0f172a;
+}
+
+.finance-mobile-list-card__subhead {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.finance-mobile-list-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.finance-mobile-list-card__meta small {
+  max-width: 100%;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.finance-mobile-list-card__footer {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.finance-mobile-filter-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid #dbe5f0;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.finance-mobile-filter-trigger strong {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 10px;
+}
+
+.finance-mobile-filter-sheet__content {
+  display: grid;
+  gap: 12px;
+}
