@@ -189,21 +189,21 @@
 }
 
 @media (max-width: 760px) {
-  .finance-shell {
-    display: block;
-    min-height: 100dvh;
-    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
-    background: #eef2f7;
+  .finance-shell.finance-shell {
+    display: block !important;
+    min-height: 100dvh !important;
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
+    background: #eef2f7 !important;
   }
 
-  .finance-sidebar {
-    display: none;
+  .finance-shell .finance-sidebar {
+    display: none !important;
   }
 
-  .finance-workspace__main {
-    min-height: auto;
-    overflow: visible;
-    padding: 14px 12px 18px;
+  .finance-shell .finance-workspace__main {
+    min-height: auto !important;
+    overflow: visible !important;
+    padding: 14px 12px 18px !important;
   }
 
   .finance-mobile-header {

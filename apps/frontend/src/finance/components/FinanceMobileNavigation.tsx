@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
 import { PRYMEIRA_HUB_URL } from '../../config/urls';
 import prymeiraLogo from '../../assets/prymeira-logo.png';
+import { financePath, normalizeFinancePath } from '../routes';
 import { FinanceNavigationGlyph, financeNavigationItems, type FinanceNavigationItem } from './FinanceSidebar';
 
 type FinanceMobileNavigationProps = {
@@ -30,10 +31,19 @@ function isBottomNavigationItem(item: FinanceNavigationItem): item is BottomNavi
 export function FinanceMobileNavigation({ userLabel, onLogout }: FinanceMobileNavigationProps) {
   const location = useLocation();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const headerMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const bottomMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const lastTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  const normalizedPathname = normalizeFinancePath(location.pathname);
 
   const currentItem = useMemo(
-    () => financeNavigationItems.find((item) => location.pathname.endsWith(`/financeiro/${item.to}`)),
-    [location.pathname]
+    () => financeNavigationItems.find((item) => {
+      const itemPath = financePath(item.to);
+      return normalizedPathname === itemPath || normalizedPathname.startsWith(`${itemPath}/`);
+    }),
+    [normalizedPathname]
   );
 
   const bottomNavigationItems = useMemo(
@@ -48,10 +58,38 @@ export function FinanceMobileNavigation({ userLabel, onLogout }: FinanceMobileNa
 
   const activeLabel = currentItem?.label ?? 'Visão Geral';
 
+  const openMore = useCallback((trigger: HTMLButtonElement | null) => {
+    lastTriggerRef.current = trigger;
+    setIsMoreOpen(true);
+  }, []);
+
+  const closeMore = useCallback(() => {
+    setIsMoreOpen(false);
+    window.setTimeout(() => {
+      lastTriggerRef.current?.focus();
+    }, 0);
+  }, []);
+
+  useEffect(() => {
+    if (!isMoreOpen) return;
+    closeButtonRef.current?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeMore();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [closeMore, isMoreOpen]);
+
   return (
     <>
       <header className="finance-mobile-header" aria-label="Cabeçalho financeiro mobile">
-        <Link to="/financeiro/overview" className="finance-mobile-header__brand">
+        <Link to={financePath('overview')} className="finance-mobile-header__brand" tabIndex={isMoreOpen ? -1 : undefined}>
           <img src={prymeiraLogo} alt="Prymeira" className="finance-mobile-header__logo" />
           <span>
             <strong>ERP Financeiro</strong>
@@ -60,11 +98,20 @@ export function FinanceMobileNavigation({ userLabel, onLogout }: FinanceMobileNa
         </Link>
 
         <button
+          ref={headerMenuButtonRef}
           type="button"
           className="finance-mobile-header__menu"
           aria-label={isMoreOpen ? 'Fechar áreas financeiras' : 'Mais áreas'}
           aria-expanded={isMoreOpen}
-          onClick={() => setIsMoreOpen((current) => !current)}
+          tabIndex={isMoreOpen ? -1 : undefined}
+          onClick={() => {
+            if (isMoreOpen) {
+              closeMore();
+              return;
+            }
+
+            openMore(headerMenuButtonRef.current);
+          }}
         >
           {isMoreOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
         </button>
@@ -74,20 +121,23 @@ export function FinanceMobileNavigation({ userLabel, onLogout }: FinanceMobileNa
         {bottomNavigationItems.map((item) => (
           <NavLink
             key={item.to}
-            to={`/financeiro/${item.to}`}
+            to={financePath(item.to)}
             end
             className={({ isActive }) => `finance-mobile-bottom-nav__item ${isActive ? 'is-active' : ''}`}
+            tabIndex={isMoreOpen ? -1 : undefined}
           >
             <FinanceNavigationGlyph name={item.icon} />
             <span>{bottomNavigationLabels[item.to]}</span>
           </NavLink>
         ))}
         <button
+          ref={bottomMenuButtonRef}
           type="button"
           className={`finance-mobile-bottom-nav__item finance-mobile-bottom-nav__more ${isMoreOpen ? 'is-active' : ''}`}
           aria-label="Mais áreas"
           aria-expanded={isMoreOpen}
-          onClick={() => setIsMoreOpen(true)}
+          tabIndex={isMoreOpen ? -1 : undefined}
+          onClick={() => openMore(bottomMenuButtonRef.current)}
         >
           <Menu size={16} aria-hidden="true" />
           <span>Mais</span>
@@ -100,7 +150,7 @@ export function FinanceMobileNavigation({ userLabel, onLogout }: FinanceMobileNa
             type="button"
             className="finance-mobile-more__scrim"
             aria-label="Fechar áreas financeiras"
-            onClick={() => setIsMoreOpen(false)}
+            onClick={closeMore}
           />
           <section
             className="finance-mobile-more__panel"
@@ -113,7 +163,7 @@ export function FinanceMobileNavigation({ userLabel, onLogout }: FinanceMobileNa
                 <small>Usuário financeiro</small>
                 <strong>{userLabel}</strong>
               </div>
-              <button type="button" aria-label="Fechar áreas financeiras" onClick={() => setIsMoreOpen(false)}>
+              <button ref={closeButtonRef} type="button" aria-label="Fechar áreas financeiras" onClick={closeMore}>
                 <X size={18} aria-hidden="true" />
               </button>
             </div>
@@ -122,10 +172,10 @@ export function FinanceMobileNavigation({ userLabel, onLogout }: FinanceMobileNa
               {overflowNavigationItems.map((item) => (
                 <NavLink
                   key={item.to}
-                  to={`/financeiro/${item.to}`}
+                  to={financePath(item.to)}
                   end
                   className={({ isActive }) => `finance-mobile-more__link ${isActive ? 'is-active' : ''}`}
-                  onClick={() => setIsMoreOpen(false)}
+                  onClick={closeMore}
                 >
                   <FinanceNavigationGlyph name={item.icon} />
                   <span>{item.label}</span>
