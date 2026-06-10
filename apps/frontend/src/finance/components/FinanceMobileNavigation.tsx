@@ -58,6 +58,11 @@ export function FinanceMobileNavigation({ userLabel, onLogout }: FinanceMobileNa
 
   const activeLabel = currentItem?.label ?? 'Visão Geral';
 
+  const isRouteActive = useCallback((item: FinanceNavigationItem) => {
+    const itemPath = financePath(item.to);
+    return normalizedPathname === itemPath || normalizedPathname.startsWith(`${itemPath}/`);
+  }, [normalizedPathname]);
+
   const openMore = useCallback((trigger: HTMLButtonElement | null) => {
     lastTriggerRef.current = trigger;
     setIsMoreOpen(true);
@@ -123,7 +128,8 @@ export function FinanceMobileNavigation({ userLabel, onLogout }: FinanceMobileNa
             key={item.to}
             to={financePath(item.to)}
             end
-            className={({ isActive }) => `finance-mobile-bottom-nav__item ${isActive ? 'is-active' : ''}`}
+            className={`finance-mobile-bottom-nav__item ${isRouteActive(item) ? 'is-active' : ''}`}
+            aria-current={isRouteActive(item) ? 'page' : undefined}
             tabIndex={isMoreOpen ? -1 : undefined}
           >
             <FinanceNavigationGlyph name={item.icon} />
@@ -174,7 +180,8 @@ export function FinanceMobileNavigation({ userLabel, onLogout }: FinanceMobileNa
                   key={item.to}
                   to={financePath(item.to)}
                   end
-                  className={({ isActive }) => `finance-mobile-more__link ${isActive ? 'is-active' : ''}`}
+                  className={`finance-mobile-more__link ${isRouteActive(item) ? 'is-active' : ''}`}
+                  aria-current={isRouteActive(item) ? 'page' : undefined}
                   onClick={closeMore}
                 >
                   <FinanceNavigationGlyph name={item.icon} />
