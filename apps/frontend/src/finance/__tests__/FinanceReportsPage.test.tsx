@@ -156,6 +156,7 @@ test('reports page renders DRE and management report sections from the backend c
 
   expect(document.querySelector('.finance-page')).toBeTruthy();
   expect(document.querySelector('.finance-reports-ref-page')).toBeTruthy();
+  expect(document.querySelector('.finance-report-ref__layout')).toBeTruthy();
   expect(await screen.findByRole('heading', { name: /DRE por Competência/i })).toBeInTheDocument();
   expect((await screen.findAllByText('R$ 1.000,00')).length).toBeGreaterThan(0);
   expect(screen.queryByText('R$ 100.000,00')).not.toBeInTheDocument();

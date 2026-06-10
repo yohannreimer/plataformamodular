@@ -830,7 +830,7 @@ export function FinanceCadastrosPage() {
         </div>
       ) : null}
 
-      <div style={{ display: 'grid', gridTemplateColumns: area === 'duplicidades' || area === 'recorrencias' ? '1fr' : 'minmax(300px, 360px) minmax(0, 1fr)', gap: 20 }}>
+      <div className="finance-cadastros-grid" style={{ display: 'grid', gridTemplateColumns: area === 'duplicidades' || area === 'recorrencias' ? '1fr' : 'minmax(300px, 360px) minmax(0, 1fr)', gap: 20 }}>
         {area !== 'duplicidades' && area !== 'recorrencias' ? (
           <div>
             {area === 'entidades' ? (

@@ -607,7 +607,7 @@ export function FinanceReportsPage() {
         </div>
       </section>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 16 }}>
+      <div className="finance-report-ref__layout" style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 16 }}>
         <aside className="finance-report-ref__tabs" style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: 8 }}>
           {REPORTS.map((report) => {
             const active = openReport === report.id;
