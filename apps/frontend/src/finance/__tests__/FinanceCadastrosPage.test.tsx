@@ -257,7 +257,9 @@ beforeEach(() => {
 test('cadastros page lists unified entities with customer and supplier filters', async () => {
   render(<FinanceCadastrosPage />);
 
+  expect(document.querySelector('.finance-page')).toBeTruthy();
   expect(await screen.findByRole('tab', { name: /Todos/i })).toBeInTheDocument();
+  expect(document.querySelector('.finance-cadastros-tabs, .finance-table-shell__content')).toBeTruthy();
   expect(screen.getByRole('tab', { name: /Clientes/i })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: /Fornecedores/i })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: /Contas/i })).toBeInTheDocument();

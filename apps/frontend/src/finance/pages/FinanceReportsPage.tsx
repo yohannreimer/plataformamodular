@@ -597,7 +597,7 @@ export function FinanceReportsPage() {
             );
           })}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10 }}>
+        <div className="finance-report-ref__exec-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10 }}>
           {(executiveKpis.length > 0 ? executiveKpis : Array.from({ length: 6 }, (_, index) => ({ label: `KPI ${index + 1}`, value: '—', color: '#94a3b8' }))).map((kpi) => (
             <div key={kpi.label} style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 12px' }}>
               <div style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>{kpi.label}</div>
@@ -608,7 +608,7 @@ export function FinanceReportsPage() {
       </section>
 
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 16 }}>
-        <aside style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: 8 }}>
+        <aside className="finance-report-ref__tabs" style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: 8 }}>
           {REPORTS.map((report) => {
             const active = openReport === report.id;
             return (

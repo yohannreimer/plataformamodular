@@ -116,7 +116,9 @@ test('FinanceAdvancedPage renders advanced controls and actions', async () => {
   const user = userEvent.setup();
   render(<FinanceAdvancedPage />);
 
+  expect(document.querySelector('.finance-page')).toBeTruthy();
   expect(await screen.findByText('Cockpit de controle')).toBeInTheDocument();
+  expect(document.querySelector('.finance-advanced-tool-tabs')).toBeTruthy();
   expect(screen.getByText('Quando isso acontecer, faça isso')).toBeInTheDocument();
   expect(screen.getByText('O que precisa de você')).toBeInTheDocument();
   expect(screen.getByText('Base de suporte')).toBeInTheDocument();

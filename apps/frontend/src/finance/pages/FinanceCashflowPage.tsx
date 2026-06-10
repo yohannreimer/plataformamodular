@@ -219,7 +219,7 @@ export function FinanceCashflowPage() {
 
       <Card style={{ marginBottom: 20 }}>
         <SectionTitle>Horizonte temporal</SectionTitle>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <div className="finance-cashflow-horizon-switcher" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           {horizons.map((item) => (
             <button
               key={item}
@@ -243,7 +243,7 @@ export function FinanceCashflowPage() {
             </button>
           ))}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+        <div className="finance-cashflow-window-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
           {horizons.map((item) => {
             const window = cashflow?.windows.find((entry) => entry.horizon_days === item);
             const meta = riskMeta(window?.risk_level);
@@ -291,7 +291,7 @@ export function FinanceCashflowPage() {
           <div style={{ minWidth: 0 }}>
             <Card style={{ marginBottom: 16 }}>
               <SectionTitle>Resumo principal — {horizon} dias</SectionTitle>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: 20 }}>
+              <div className="finance-cashflow-page__summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: 20 }}>
                 {summaryItems.map((item) => (
                   <div key={item.label} style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 12px' }}>
                     <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>{item.label}</div>
@@ -303,7 +303,7 @@ export function FinanceCashflowPage() {
                 ))}
               </div>
 
-              <div style={{ background: '#f8fafc', borderRadius: 8, padding: '16px', marginBottom: 12 }}>
+              <div className="finance-cashflow-page__chart" style={{ background: '#f8fafc', borderRadius: 8, padding: '16px', marginBottom: 12 }}>
                 <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, fontWeight: 600 }}>Curva do saldo projetado</div>
                 <svg viewBox={`0 0 ${geometry.width} ${geometry.height}`} style={{ width: '100%', height: 120 }} preserveAspectRatio="none">
                   <defs>

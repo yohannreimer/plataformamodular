@@ -155,7 +155,7 @@ function CatalogTable({
   children: ReactNode;
 }) {
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div className="finance-table-shell__content" style={{ overflowX: 'auto', padding: 0 }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
         <thead>
           <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
@@ -781,7 +781,7 @@ export function FinanceCadastrosPage() {
       />
 
       <Card padding={0} style={{ marginBottom: 16, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', gap: 4, padding: '0 14px', borderBottom: '1px solid #e2e8f0', overflowX: 'auto' }} role="tablist" aria-label="Seções de cadastro financeiro">
+        <div className="finance-cadastros-tabs" style={{ display: 'flex', flexWrap: 'nowrap', gap: 4, padding: '0 14px', borderBottom: '1px solid #e2e8f0', overflowX: 'auto' }} role="tablist" aria-label="Seções de cadastro financeiro">
           {sections.map((item) => (
             <button
               key={item.id}

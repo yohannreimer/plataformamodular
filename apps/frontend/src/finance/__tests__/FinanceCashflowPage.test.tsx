@@ -81,11 +81,13 @@ beforeEach(() => {
 test('cashflow page renders the 30 60 90 day horizon controls', async () => {
   render(<FinanceCashflowPage />);
 
+  expect(document.querySelector('.finance-page')).toBeTruthy();
   expect((await screen.findAllByRole('button', { name: /30 dias/i })).length).toBeGreaterThan(0);
   expect(screen.getAllByRole('button', { name: /60 dias/i }).length).toBeGreaterThan(0);
   expect(screen.getAllByRole('button', { name: /90 dias/i }).length).toBeGreaterThan(0);
   expect(screen.getByText('Fluxo de caixa projetado')).toBeInTheDocument();
   expect(await screen.findByText('Compressão de caixa')).toBeInTheDocument();
+  expect(document.querySelector('.finance-cashflow-window-grid')).toBeTruthy();
 
   await userEvent.click(screen.getAllByRole('button', { name: /30 dias/i })[0]);
 

@@ -177,6 +177,7 @@ test('FinanceOverviewPage renders the approved executive split-control home', as
     </MemoryRouter>
   );
 
+  expect(document.querySelector('.finance-page')).toBeTruthy();
   expect(await screen.findByText('R$ 1.284.300,00')).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Visão Geral' })).toBeInTheDocument();
   expect(screen.getByLabelText('Período financeiro')).toHaveValue('all');

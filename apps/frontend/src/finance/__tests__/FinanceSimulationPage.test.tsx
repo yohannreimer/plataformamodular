@@ -189,10 +189,12 @@ test('FinanceSimulationPage creates a table and pulls real financial sources int
   const user = userEvent.setup();
   render(<FinanceSimulationPage />);
 
+  expect(document.querySelector('.finance-page')).toBeTruthy();
   expect(await screen.findByText('Mesa de simulação')).toBeInTheDocument();
   expect(await screen.findByText('Fontes do financeiro')).toBeInTheDocument();
   expect(screen.getByText('Planilha de cenário')).toBeInTheDocument();
   expect(screen.getByRole('table', { name: 'Planilha de simulação financeira' })).toBeInTheDocument();
+  expect(document.querySelector('.finance-simulation-grid-wrap')).toBeTruthy();
   expect(screen.queryByRole('columnheader', { name: 'Prob.' })).not.toBeInTheDocument();
   expect(screen.queryByRole('columnheader', { name: 'Origem' })).not.toBeInTheDocument();
   expect(screen.queryByRole('columnheader', { name: 'Tipo' })).not.toBeInTheDocument();

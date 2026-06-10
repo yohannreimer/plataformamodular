@@ -154,10 +154,12 @@ test('reports page renders DRE and management report sections from the backend c
     </MemoryRouter>
   );
 
+  expect(document.querySelector('.finance-page')).toBeTruthy();
+  expect(document.querySelector('.finance-reports-ref-page')).toBeTruthy();
   expect(await screen.findByRole('heading', { name: /DRE por Competência/i })).toBeInTheDocument();
   expect((await screen.findAllByText('R$ 1.000,00')).length).toBeGreaterThan(0);
   expect(screen.queryByText('R$ 100.000,00')).not.toBeInTheDocument();
-  expect(screen.getAllByRole('link', { name: 'Abrir' })[0]).toHaveAttribute('href', '/m/financeiro/receivables?preset=custom&from=2026-05-01&to=2026-05-31');
+  expect(screen.getAllByRole('link', { name: 'Abrir' })[0]).toHaveAttribute('href', '/m/financeiro/receivables');
   expect(await screen.findByText('Compras')).toBeInTheDocument();
   expect(await screen.findByText('Serviços terceiros')).toBeInTheDocument();
   expect(await screen.findByText('Sem categoria')).toBeInTheDocument();
