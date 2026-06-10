@@ -303,14 +303,18 @@ function ImportRow(props: { job: FinanceImportJob }) {
   );
 }
 
-function RecentMatchRow(props: { match: FinanceReconciliationMatch }) {
-  const kindLabel = props.match.source === 'manual'
+function reconciliationMatchKindLabel(match: FinanceReconciliationMatch): string {
+  return match.source === 'manual'
     ? 'Manual'
-    : props.match.source === 'statement_create'
+    : match.source === 'statement_create'
       ? 'Criado pelo extrato'
-      : props.match.source === 'rule'
+      : match.source === 'rule'
         ? 'Regra'
         : 'Automático';
+}
+
+function RecentMatchRow(props: { match: FinanceReconciliationMatch }) {
+  const kindLabel = reconciliationMatchKindLabel(props.match);
   return (
     <div style={{ padding: '12px 0', borderBottom: '1px solid #f1f5f9', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 12, alignItems: 'center' }}>
       <div style={{ minWidth: 0 }}>
@@ -776,25 +780,98 @@ export function FinanceReconciliationPage() {
 
               <div style={{ padding: '0 0 4px' }}>
                 <section className="finance-mobile-dense-section" aria-label="Conciliação mobile">
-                  <FinanceMobileList ariaLabel="Itens de conciliação em cards">
-                    {queueEntries.map((entry) => {
-                      const firstSuggestion = entry.suggested_matches[0];
-                      return (
-                        <FinanceMobileListCard
-                          key={entry.id}
-                          title={entry.description || entry.financial_account_name || 'Item de conciliação'}
-                          amount={formatCurrency(entry.amount_cents)}
-                          amountTone={entry.amount_cents >= 0 ? 'income' : 'expense'}
-                          status={entry.suggested_matches.length > 0 ? 'Com sugestão' : 'Sem sugestão'}
-                          date={formatDate(entry.posted_at || entry.statement_date)}
-                          meta={[
-                            entry.financial_account_name || 'Conta sem nome',
-                            firstSuggestion?.financial_entity_name || firstSuggestion?.description || 'Sem sugestão automática'
-                          ]}
-                        />
-                      );
-                    })}
-                  </FinanceMobileList>
+                  {tab === 'fila' ? (
+                    queueEntries.length > 0 ? (
+                      <FinanceMobileList ariaLabel="Itens de conciliação em cards">
+                        {queueEntries.map((entry) => {
+                          const firstSuggestion = entry.suggested_matches[0];
+                          return (
+                            <FinanceMobileListCard
+                              key={entry.id}
+                              title={entry.description || entry.financial_account_name || 'Item de conciliação'}
+                              amount={formatCurrency(entry.amount_cents)}
+                              amountTone={entry.amount_cents >= 0 ? 'income' : 'expense'}
+                              status={entry.suggested_matches.length > 0 ? 'Com sugestão' : 'Sem sugestão'}
+                              date={formatDate(entry.posted_at || entry.statement_date)}
+                              meta={[
+                                entry.financial_account_name || 'Conta sem nome',
+                                firstSuggestion?.financial_entity_name || firstSuggestion?.description || 'Sem sugestão automática'
+                              ]}
+                            />
+                          );
+                        })}
+                      </FinanceMobileList>
+                    ) : (
+                      <FinanceEmptyState title="Nenhuma pendência nesta aba." />
+                    )
+                  ) : null}
+
+                  {tab === 'quality' ? (
+                    qualityIssues.length > 0 ? (
+                      <FinanceMobileList ariaLabel="Pendências de qualidade em cards">
+                        {qualityIssues.map((issue) => {
+                          const hasSuggestions = issue.suggestions.length > 0;
+                          return (
+                            <FinanceMobileListCard
+                              key={issue.id}
+                              title={issue.title || 'Pendência de qualidade'}
+                              amount={formatCurrency(issue.amount_cents)}
+                              amountTone={issue.amount_cents >= 0 ? 'income' : 'expense'}
+                              status={issue.severity}
+                              date={formatDate(issue.reference_date)}
+                              meta={[issue.detail, issue.missing_fields.slice(0, 2).join(', ') || 'Sem campos pendentes']}
+                              {...(hasSuggestions ? {
+                                disabled: correctingIssueId === issue.id,
+                                onClick: () => handleOpenQualityIssue(issue)
+                              } : {})}
+                            />
+                          );
+                        })}
+                      </FinanceMobileList>
+                    ) : (
+                      <FinanceEmptyState title="Nenhum dado incompleto nesta aba." />
+                    )
+                  ) : null}
+
+                  {tab === 'importados' ? (
+                    importedJobs.length > 0 ? (
+                      <FinanceMobileList ariaLabel="Importações financeiras em cards">
+                        {importedJobs.map((job) => (
+                          <FinanceMobileListCard
+                            key={job.id}
+                            title={job.source_file_name || 'Importação financeira'}
+                            amount={`${job.total_rows} linhas`}
+                            amountTone="neutral"
+                            status={job.status}
+                            date={formatDate(job.created_at)}
+                            meta={[`Tipo: ${job.import_type.toUpperCase()}`, job.error_summary || `${job.processed_rows} processadas`]}
+                          />
+                        ))}
+                      </FinanceMobileList>
+                    ) : (
+                      <FinanceEmptyState title="Nenhum importado nesta aba." />
+                    )
+                  ) : null}
+
+                  {tab === 'matches' ? (
+                    recentMatches.length > 0 ? (
+                      <FinanceMobileList ariaLabel="Matches recentes em cards">
+                        {recentMatches.map((match) => (
+                          <FinanceMobileListCard
+                            key={match.id}
+                            title={reconciliationMatchKindLabel(match)}
+                            amount={match.confidence_score != null ? `${Math.round(match.confidence_score * 100)}%` : 'Sem score'}
+                            amountTone="neutral"
+                            status={match.match_status}
+                            date={formatDate(match.reviewed_at ?? match.created_at)}
+                            meta={[`Transação vinculada: ${match.financial_transaction_id ?? 'Sem transação'}`]}
+                          />
+                        ))}
+                      </FinanceMobileList>
+                    ) : (
+                      <FinanceEmptyState title="Nenhum match recente nesta aba." />
+                    )
+                  ) : null}
                 </section>
                 <div className="finance-desktop-dense-section">
                   {tab === 'fila' ? (

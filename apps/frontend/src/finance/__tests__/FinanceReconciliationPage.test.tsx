@@ -448,15 +448,19 @@ test('reconciliation page switches tabs and applies a suggested match', async ()
   render(<FinanceReconciliationPage />);
 
   expect(await screen.findByText('Pendências de conciliação')).toBeInTheDocument();
+  const mobileRegion = screen.getByRole('region', { name: 'Conciliação mobile' });
 
   await user.click(screen.getByRole('tab', { name: /Importados/i }));
   expect((await screen.findAllByText('extrato-2026-04.ofx')).length).toBeGreaterThan(0);
+  expect(within(mobileRegion).getByText('extrato-2026-04.ofx')).toBeInTheDocument();
 
   await user.click(screen.getByRole('tab', { name: /Matches recentes/i }));
   expect((await screen.findAllByText(/Transação vinculada: ftxn-2/i)).length).toBeGreaterThan(0);
+  expect(within(mobileRegion).getByText(/Transação vinculada: ftxn-2/i)).toBeInTheDocument();
 
   await user.click(screen.getByRole('tab', { name: /Dados incompletos/i }));
-  expect(await screen.findByText('Conta a pagar incompleta')).toBeInTheDocument();
+  expect((await screen.findAllByText('Conta a pagar incompleta')).length).toBeGreaterThan(0);
+  expect(within(mobileRegion).getByText('Conta a pagar incompleta')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Revisar pendência' }));
   expect(await screen.findByRole('dialog', { name: 'Revisar pendência' })).toBeInTheDocument();
   expect(screen.getByLabelText('Correção financial_category_id')).toHaveValue('cat-1');
