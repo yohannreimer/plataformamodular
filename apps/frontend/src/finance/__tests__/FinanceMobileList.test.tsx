@@ -39,3 +39,25 @@ test('mobile filter sheet opens supplied filter controls', () => {
   expect(screen.getByRole('dialog', { name: 'Filtros do ledger' })).toBeInTheDocument();
   expect(screen.getByLabelText('Busca')).toBeInTheDocument();
 });
+
+test('mobile filter sheet uses singular active filter label', () => {
+  render(
+    <FinanceMobileFilterSheet title="Filtros do ledger" activeCount={1}>
+      <label htmlFor="ledger-search-single-mobile">Busca</label>
+      <input id="ledger-search-single-mobile" />
+    </FinanceMobileFilterSheet>
+  );
+
+  expect(screen.getByRole('button', { name: 'Abrir filtros do ledger, 1 filtro ativo' })).toBeInTheDocument();
+});
+
+test('mobile list card skips empty optional wrappers', () => {
+  const { container } = render(
+    <FinanceMobileList ariaLabel="Lançamentos mobile">
+      <FinanceMobileListCard title="Receita avulsa" amount="R$ 80,00" meta={['']} onClick={vi.fn()} />
+    </FinanceMobileList>
+  );
+
+  expect(container.querySelector('.finance-mobile-list-card__subhead')).not.toBeInTheDocument();
+  expect(container.querySelector('.finance-mobile-list-card__meta')).not.toBeInTheDocument();
+});

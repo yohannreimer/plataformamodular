@@ -12,7 +12,13 @@ export function FinanceMobileFilterSheet({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const label = activeCount > 0 ? `Abrir ${title.toLowerCase()}, ${activeCount} filtros ativos` : `Abrir ${title.toLowerCase()}`;
+  const baseLabel = `Abrir ${title.toLowerCase()}`;
+  const label =
+    activeCount <= 0
+      ? baseLabel
+      : activeCount === 1
+        ? `${baseLabel}, 1 filtro ativo`
+        : `${baseLabel}, ${activeCount} filtros ativos`;
 
   return (
     <>

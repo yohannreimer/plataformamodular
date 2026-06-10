@@ -29,6 +29,8 @@ export function FinanceMobileListCard({
   footer?: ReactNode;
   onClick: () => void;
 }) {
+  const visibleMeta = meta?.filter(Boolean) ?? [];
+
   return (
     <article className="finance-mobile-list-card" role="listitem">
       <button type="button" className="finance-mobile-list-card__button" onClick={onClick}>
@@ -36,13 +38,15 @@ export function FinanceMobileListCard({
           <strong>{title}</strong>
           <span className={`finance-mobile-list-card__amount finance-mobile-list-card__amount--${amountTone}`}>{amount}</span>
         </span>
-        <span className="finance-mobile-list-card__subhead">
-          {status ? <span>{status}</span> : null}
-          {date ? <span>{date}</span> : null}
-        </span>
-        {meta && meta.length > 0 ? (
+        {status || date ? (
+          <span className="finance-mobile-list-card__subhead">
+            {status ? <span>{status}</span> : null}
+            {date ? <span>{date}</span> : null}
+          </span>
+        ) : null}
+        {visibleMeta.length > 0 ? (
           <span className="finance-mobile-list-card__meta">
-            {meta.filter(Boolean).map((item) => (
+            {visibleMeta.map((item) => (
               <small key={item}>{item}</small>
             ))}
           </span>
