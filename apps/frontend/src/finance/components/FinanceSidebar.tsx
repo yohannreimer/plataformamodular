@@ -22,7 +22,7 @@ type FinanceSidebarProps = {
   onLogout?: () => void;
 };
 
-const navigationItems = [
+export const financeNavigationItems = [
   { to: 'overview', label: 'Visão Geral', icon: 'overview' },
   { to: 'transactions', label: 'Movimentações', icon: 'transactions' },
   { to: 'receivables', label: 'Contas a Receber', icon: 'receivables' },
@@ -34,6 +34,8 @@ const navigationItems = [
   { to: 'simulation', label: 'Simulação', icon: 'simulation' },
   { to: 'advanced', label: 'Avançado', icon: 'advanced' }
 ] as const;
+
+export type FinanceNavigationItem = (typeof financeNavigationItems)[number];
 
 const FINANCE_ICON_MAP: Record<string, LucideIcon> = {
   overview: LayoutGrid,
@@ -48,7 +50,7 @@ const FINANCE_ICON_MAP: Record<string, LucideIcon> = {
   advanced: Settings2
 };
 
-function NavigationGlyph({ name }: { name: string }) {
+export function FinanceNavigationGlyph({ name }: { name: string }) {
   const Icon = FINANCE_ICON_MAP[name];
   if (!Icon) return null;
   return <Icon size={16} strokeWidth={1.75} aria-hidden="true" />;
@@ -66,7 +68,7 @@ export function FinanceSidebar({ context: _context, onLogout }: FinanceSidebarPr
       </Link>
 
       <nav className="finance-sidebar__nav" aria-label="Sitemap financeiro">
-        {navigationItems.map((item) => (
+        {financeNavigationItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -76,7 +78,7 @@ export function FinanceSidebar({ context: _context, onLogout }: FinanceSidebarPr
             {({ isActive }) => (
               <>
                 <span className="finance-sidebar__nav-icon" aria-hidden="true" style={{ opacity: isActive ? 1 : 0.7 }}>
-                  <NavigationGlyph name={item.icon} />
+                  <FinanceNavigationGlyph name={item.icon} />
                 </span>
                 <span className="finance-sidebar__nav-label">{item.label}</span>
               </>
