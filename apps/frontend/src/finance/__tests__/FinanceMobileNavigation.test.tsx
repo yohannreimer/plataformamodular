@@ -45,7 +45,9 @@ test('normalizes legacy finance routes when resolving the active mobile label', 
 
   expect(screen.getByRole('banner', { name: 'Cabeçalho financeiro mobile' })).toHaveTextContent('Movimentações');
   const navigation = screen.getByRole('navigation', { name: 'Atalhos financeiros mobile' });
-  expect(within(navigation).getByRole('link', { name: /movimentações/i })).toHaveClass('is-active');
+  const transactionsLink = within(navigation).getByRole('link', { name: /movimentações/i });
+  expect(transactionsLink).toHaveClass('is-active');
+  expect(transactionsLink).toHaveAttribute('aria-current', 'page');
 });
 
 test('keeps nested canonical routes active in the mobile shortcuts', () => {
@@ -57,7 +59,9 @@ test('keeps nested canonical routes active in the mobile shortcuts', () => {
 
   expect(screen.getByRole('banner', { name: 'Cabeçalho financeiro mobile' })).toHaveTextContent('Movimentações');
   const navigation = screen.getByRole('navigation', { name: 'Atalhos financeiros mobile' });
-  expect(within(navigation).getByRole('link', { name: /movimentações/i })).toHaveClass('is-active');
+  const transactionsLink = within(navigation).getByRole('link', { name: /movimentações/i });
+  expect(transactionsLink).toHaveClass('is-active');
+  expect(transactionsLink).toHaveAttribute('aria-current', 'page');
 });
 
 test('opens the mobile overflow menu with secondary links and logout action', () => {

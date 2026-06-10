@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, NavLink, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
 import { PRYMEIRA_HUB_URL } from '../../config/urls';
 import prymeiraLogo from '../../assets/prymeira-logo.png';
@@ -124,17 +124,16 @@ export function FinanceMobileNavigation({ userLabel, onLogout }: FinanceMobileNa
 
       <nav className="finance-mobile-bottom-nav" aria-label="Atalhos financeiros mobile">
         {bottomNavigationItems.map((item) => (
-          <NavLink
+          <Link
             key={item.to}
             to={financePath(item.to)}
-            end
             className={`finance-mobile-bottom-nav__item ${isRouteActive(item) ? 'is-active' : ''}`}
             aria-current={isRouteActive(item) ? 'page' : undefined}
             tabIndex={isMoreOpen ? -1 : undefined}
           >
             <FinanceNavigationGlyph name={item.icon} />
             <span>{bottomNavigationLabels[item.to]}</span>
-          </NavLink>
+          </Link>
         ))}
         <button
           ref={bottomMenuButtonRef}
@@ -176,17 +175,16 @@ export function FinanceMobileNavigation({ userLabel, onLogout }: FinanceMobileNa
 
             <nav className="finance-mobile-more__links" aria-label="Mais atalhos financeiros">
               {overflowNavigationItems.map((item) => (
-                <NavLink
+                <Link
                   key={item.to}
                   to={financePath(item.to)}
-                  end
                   className={`finance-mobile-more__link ${isRouteActive(item) ? 'is-active' : ''}`}
                   aria-current={isRouteActive(item) ? 'page' : undefined}
                   onClick={closeMore}
                 >
                   <FinanceNavigationGlyph name={item.icon} />
                   <span>{item.label}</span>
-                </NavLink>
+                </Link>
               ))}
             </nav>
 
