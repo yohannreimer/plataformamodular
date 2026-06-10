@@ -168,23 +168,26 @@ beforeEach(() => {
 });
 
 test('transactions page renders ledger filters, supports editing and deleting rows', async () => {
-  render(<FinanceTransactionsPage />);
+  const { container } = render(<FinanceTransactionsPage />);
+  const desktopRuntime = container.querySelector('.finance-transactions-desktop-runtime');
+  expect(desktopRuntime).toBeInTheDocument();
+  const desktop = within(desktopRuntime as HTMLElement);
 
-  const filtersPanel = await screen.findByRole('region', { name: 'Filtros do ledger' });
+  const filtersPanel = await desktop.findByRole('region', { name: 'Filtros do ledger' });
   expect(within(filtersPanel).getByLabelText('Busca')).toBeInTheDocument();
   expect(within(filtersPanel).getByLabelText('Status')).toBeInTheDocument();
   expect(within(filtersPanel).getByLabelText('Tipo')).toBeInTheDocument();
-  expect(screen.getByRole('table', { name: 'Ledger financeiro' })).toBeInTheDocument();
-  expect(screen.getByRole('region', { name: 'Resumo do ledger' })).toBeInTheDocument();
+  expect(desktop.getByRole('table', { name: 'Ledger financeiro' })).toBeInTheDocument();
+  expect(desktop.getByRole('region', { name: 'Resumo do ledger' })).toBeInTheDocument();
 
-  const rowButton = await screen.findByRole('button', { name: /mensalidade de serviços/i });
+  const rowButton = await desktop.findByRole('button', { name: /mensalidade de serviços/i });
   rowButton.click();
 
   await waitFor(() => {
-    expect(screen.getByRole('region', { name: 'Detalhes do lançamento' })).toHaveTextContent('Alpha Serviços');
+    expect(desktop.getByRole('region', { name: 'Detalhes do lançamento' })).toHaveTextContent('Alpha Serviços');
   });
 
-  const details = screen.getByRole('region', { name: 'Detalhes do lançamento' });
+  const details = desktop.getByRole('region', { name: 'Detalhes do lançamento' });
   expect(within(details).getAllByText('Conta Operacional').length).toBeGreaterThan(0);
   expect(within(details).getAllByText('Despesas Operacionais').length).toBeGreaterThan(0);
 
@@ -235,9 +238,12 @@ test('transactions page auto-fills settlement_date when creating a settled trans
 test('transactions page lets an existing movement edit the settlement date', async () => {
   const { financeApi } = await import('../api');
   const user = (await import('@testing-library/user-event')).default.setup();
-  render(<FinanceTransactionsPage />);
+  const { container } = render(<FinanceTransactionsPage />);
+  const desktopRuntime = container.querySelector('.finance-transactions-desktop-runtime');
+  expect(desktopRuntime).toBeInTheDocument();
+  const desktop = within(desktopRuntime as HTMLElement);
 
-  await user.click(await screen.findByRole('button', { name: /mensalidade de serviços/i }));
+  await user.click(await desktop.findByRole('button', { name: /mensalidade de serviços/i }));
   await user.click(screen.getByRole('button', { name: 'Editar linha' }));
   await user.selectOptions(screen.getByLabelText('Status do lançamento'), 'settled');
   await user.clear(screen.getByLabelText('Data da baixa'));
@@ -269,4 +275,18 @@ test('transactions page can open a draft and cancel it without persisting', asyn
 
   expect(screen.queryByDisplayValue('Rascunho descartado')).not.toBeInTheDocument();
   expect(financeApi.createTransaction).not.toHaveBeenCalled();
+});
+
+test('transactions page exposes a mobile ledger view with filter and detail sheets', async () => {
+  const user = (await import('@testing-library/user-event')).default.setup();
+  render(<FinanceTransactionsPage forceMobile />);
+
+  await screen.findByRole('list', { name: 'Ledger financeiro mobile' });
+  expect(screen.queryByRole('table', { name: 'Ledger financeiro' })).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole('button', { name: /mensalidade de serviços/i }));
+  expect(screen.getByRole('dialog', { name: 'Detalhes do lançamento' })).toHaveTextContent('Alpha Serviços');
+
+  await user.click(screen.getByRole('button', { name: /abrir filtros do ledger/i }));
+  expect(screen.getByRole('dialog', { name: 'Filtros do ledger' })).toBeInTheDocument();
 });
