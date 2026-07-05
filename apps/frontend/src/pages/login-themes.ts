@@ -58,9 +58,12 @@ const themes: Record<string, AppTheme> = {
  * fluvia.prymeiradigital.com.br (e localhost) → fluvia
  */
 export function getAppTheme(): AppTheme {
-  const hostname = window.location.hostname;
+  const hostname = window.location.hostname ?? '';
   if (hostname.includes('velio')) return themes.velio;
   // Dev override: ?theme=velio in URL (e.g. /landing?theme=velio)
-  if (typeof window !== 'undefined' && window.location.search.includes('theme=velio')) return themes.velio;
+  const search = typeof window !== 'undefined' && typeof window.location.search === 'string'
+    ? window.location.search
+    : '';
+  if (search.includes('theme=velio')) return themes.velio;
   return themes.fluvia;
 }

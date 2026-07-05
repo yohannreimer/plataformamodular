@@ -2,6 +2,7 @@ import type { IncomingMessage, Server as HttpServer } from 'node:http';
 import { db } from '../db.js';
 import { readPortalSessionByToken, type PortalSessionContext } from './auth.js';
 import { setPortalTypingState, touchPortalPresence } from './realtimeState.js';
+import { PORTAL_SESSION_COOKIE_NAME } from '../security.js';
 
 type PortalRealtimeSide = 'holand' | 'cliente';
 type PortalRealtimeEvent =
@@ -34,7 +35,7 @@ type WsServer = {
 };
 
 type WsModule = {
-  WebSocketServer: new (options: { server: HttpServer; path: string }) => WsServer;
+  WebSocketServer: new (options: { server: HttpServer; path: string; maxPayload?: number }) => WsServer;
 };
 
 type ClientState = {
@@ -45,18 +46,36 @@ type ClientState = {
   tickets: Set<string>;
 };
 
-function parseTokenFromRequest(request: IncomingMessage): string | null {
-  const host = request.headers.host || 'localhost';
-  const url = request.url || '/';
-  let parsed: URL;
-  try {
-    parsed = new URL(url, `http://${host}`);
-  } catch {
-    return null;
+function readCookieFromHeader(cookieHeader: string | undefined, name: string): string | null {
+  if (!cookieHeader) return null;
+  for (const item of cookieHeader.split(';')) {
+    const [rawName, ...rawValueParts] = item.trim().split('=');
+    if (rawName !== name) continue;
+    const rawValue = rawValueParts.join('=');
+    if (!rawValue) return null;
+    try {
+      return decodeURIComponent(rawValue);
+    } catch {
+      return rawValue;
+    }
   }
-  const token = parsed.searchParams.get('token');
-  if (!token) return null;
-  return token.trim() || null;
+  return null;
+}
+
+export function parsePortalRealtimeTokenFromRequest(request: IncomingMessage): string | null {
+  const protocolHeader = request.headers['sec-websocket-protocol'];
+  const protocols = Array.isArray(protocolHeader)
+    ? protocolHeader.flatMap((item) => item.split(','))
+    : (protocolHeader ?? '').split(',');
+
+  for (const protocol of protocols) {
+    const normalized = protocol.trim();
+    if (!normalized.startsWith('portal-token.')) continue;
+    const token = normalized.slice('portal-token.'.length).trim();
+    if (token) return token;
+  }
+
+  return readCookieFromHeader(request.headers.cookie, PORTAL_SESSION_COOKIE_NAME);
 }
 
 function canAccessTicket(context: PortalSessionContext, ticketId: string): boolean {
@@ -120,11 +139,12 @@ class PortalRealtimeHub {
   private startServer(server: HttpServer, wsModule: WsModule) {
     const wss = new wsModule.WebSocketServer({
       server,
-      path: '/portal/ws'
+      path: '/portal/ws',
+      maxPayload: 32 * 1024
     });
 
     wss.on('connection', (socket, request) => {
-      const token = parseTokenFromRequest(request);
+      const token = parsePortalRealtimeTokenFromRequest(request);
       if (!token) {
         socket.close(4401);
         return;

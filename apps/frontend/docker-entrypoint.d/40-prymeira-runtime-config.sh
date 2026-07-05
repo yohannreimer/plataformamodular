@@ -1,11 +1,14 @@
 #!/bin/sh
 set -eu
 
-cat > /usr/share/nginx/html/config.js <<EOF
-window.__PRYMEIRA_CONFIG__ = {
-  VITE_CLERK_PUBLISHABLE_KEY: "${VITE_CLERK_PUBLISHABLE_KEY:-${CLERK_PUBLISHABLE_KEY:-}}",
-  CLERK_PUBLISHABLE_KEY: "${CLERK_PUBLISHABLE_KEY:-}",
-  VITE_PRYMEIRA_HUB_URL: "${VITE_PRYMEIRA_HUB_URL:-https://hub.prymeiradigital.com.br}"
-};
-EOF
-
+jq -n \
+  --arg viteClerkPublishableKey "${VITE_CLERK_PUBLISHABLE_KEY:-${CLERK_PUBLISHABLE_KEY:-}}" \
+  --arg clerkPublishableKey "${CLERK_PUBLISHABLE_KEY:-}" \
+  --arg prymeiraHubUrl "${VITE_PRYMEIRA_HUB_URL:-https://hub.prymeiradigital.com.br}" \
+  '{
+    VITE_CLERK_PUBLISHABLE_KEY: $viteClerkPublishableKey,
+    CLERK_PUBLISHABLE_KEY: $clerkPublishableKey,
+    VITE_PRYMEIRA_HUB_URL: $prymeiraHubUrl
+  }' \
+  | sed '1s/^/window.__PRYMEIRA_CONFIG__ = /;$s/$/;/' \
+  > /usr/share/nginx/html/config.js

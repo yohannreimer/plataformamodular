@@ -1423,6 +1423,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     response = await fetch(`${BASE_URL}${path}`, {
       ...init,
       headers,
+      credentials: 'include',
       signal: controller.signal
     });
   } catch (error) {

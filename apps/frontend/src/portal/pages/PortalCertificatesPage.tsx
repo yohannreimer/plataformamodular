@@ -6,7 +6,7 @@ const API_BASE_URL = env?.VITE_API_BASE_URL ?? `http://${window.location.hostnam
 
 type PortalCertificatesPageProps = {
   api: Pick<PortalAuthedApi, 'certificates'>;
-  sessionToken: string;
+  sessionToken?: string;
 };
 
 function formatDateBr(dateIso: string | null) {
@@ -52,9 +52,8 @@ export function PortalCertificatesPage({ api, sessionToken }: PortalCertificates
     setDownloadingId(item.certificate_id);
     try {
       const response = await fetch(`${API_BASE_URL}${item.download_url}`, {
-        headers: {
-          Authorization: `Bearer ${sessionToken}`
-        }
+        credentials: 'include',
+        headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined
       });
       if (!response.ok) {
         const body = await response.text();

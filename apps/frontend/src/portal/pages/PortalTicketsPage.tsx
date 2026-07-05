@@ -211,19 +211,18 @@ function resolveRealtimeApiBase(rawBaseUrl: string) {
   };
 }
 
-function makePortalWsUrls(sessionToken: string) {
+function makePortalWsUrls() {
   const base = resolveRealtimeApiBase(API_BASE_URL);
   const protocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
-  const tokenParam = `token=${encodeURIComponent(sessionToken)}`;
   const candidates: string[] = [];
   if (window.location.port === '5173') {
-    candidates.push(`${protocol}//${window.location.hostname}:4000/portal/ws?${tokenParam}`);
-    candidates.push(`${protocol}//${window.location.hostname}:4010/portal/ws?${tokenParam}`);
+    candidates.push(`${protocol}//${window.location.hostname}:4000/portal/ws`);
+    candidates.push(`${protocol}//${window.location.hostname}:4010/portal/ws`);
   }
   if (base.pathPrefix) {
-    candidates.push(`${protocol}//${base.host}${base.pathPrefix}/portal/ws?${tokenParam}`);
+    candidates.push(`${protocol}//${base.host}${base.pathPrefix}/portal/ws`);
   }
-  candidates.push(`${protocol}//${base.host}/portal/ws?${tokenParam}`);
+  candidates.push(`${protocol}//${base.host}/portal/ws`);
   return Array.from(new Set(candidates));
 }
 
@@ -516,14 +515,17 @@ export function PortalTicketsPage({ api, isInternal, sessionToken }: PortalTicke
   }
 
   useEffect(() => {
-    if (!PORTAL_REALTIME_ENABLED || !sessionToken || typeof WebSocket === 'undefined') return undefined;
+    if (!PORTAL_REALTIME_ENABLED || typeof WebSocket === 'undefined') return undefined;
     let disposed = false;
     let socket: WebSocket | null = null;
     let retryDelayMs = 1000;
     let bootTimer: number | null = null;
     let pingTimer: number | null = null;
     let wsCandidateIndex = 0;
-    const wsUrls = makePortalWsUrls(sessionToken);
+    const wsUrls = makePortalWsUrls();
+    const protocols = sessionToken
+      ? ['portal.session', `portal-token.${sessionToken}`]
+      : undefined;
 
     const clearReconnectTimer = () => {
       if (reconnectTimerRef.current) {
@@ -558,7 +560,7 @@ export function PortalTicketsPage({ api, isInternal, sessionToken }: PortalTicke
       try {
         const targetUrl = wsUrls[wsCandidateIndex % wsUrls.length] ?? wsUrls[0];
         wsCandidateIndex += 1;
-        nextSocket = new WebSocket(targetUrl);
+        nextSocket = protocols ? new WebSocket(targetUrl, protocols) : new WebSocket(targetUrl);
       } catch {
         scheduleReconnect();
         return;
@@ -753,7 +755,6 @@ export function PortalTicketsPage({ api, isInternal, sessionToken }: PortalTicke
   }, [sessionToken]);
 
   useEffect(() => {
-    if (!sessionToken) return undefined;
     const pollId = window.setInterval(() => {
       const socketOpen = socketRef.current?.readyState === WebSocket.OPEN;
       if (socketOpen) return;
@@ -763,7 +764,7 @@ export function PortalTicketsPage({ api, isInternal, sessionToken }: PortalTicke
       }
     }, 2000);
     return () => window.clearInterval(pollId);
-  }, [sessionToken]);
+  }, []);
 
   useEffect(() => {
     if (!selectedTicketId) return undefined;
@@ -833,15 +834,9 @@ export function PortalTicketsPage({ api, isInternal, sessionToken }: PortalTicke
   ) {
     const url = `${API_BASE_URL}${attachment.download_url}`;
     try {
-      if (!sessionToken) {
-        window.open(url, '_blank', 'noopener,noreferrer');
-        return;
-      }
-
       const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${sessionToken}`
-        }
+        credentials: 'include',
+        headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined
       });
       if (!response.ok) {
         throw new Error('Falha ao baixar anexo.');

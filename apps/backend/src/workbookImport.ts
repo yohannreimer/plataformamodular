@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import { readSheet } from 'read-excel-file/node';
 import { clearAllData, db, nowDateIso } from './db.js';
 
 type AnyRow = Record<string, unknown>;
@@ -67,12 +67,15 @@ function pick(row: AnyRow, aliases: string[]): unknown {
 function parseDate(value: unknown): string | null {
   if (value == null || value === '') return null;
 
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+
   if (typeof value === 'number') {
-    const parsed = XLSX.SSF.parse_date_code(value);
-    if (!parsed) return null;
-    const mm = String(parsed.m).padStart(2, '0');
-    const dd = String(parsed.d).padStart(2, '0');
-    return `${parsed.y}-${mm}-${dd}`;
+    const excelEpoch = Date.UTC(1899, 11, 30);
+    const parsed = new Date(excelEpoch + Math.trunc(value) * 24 * 60 * 60 * 1000);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed.toISOString().slice(0, 10);
   }
 
   const text = toStringValue(value);
@@ -136,13 +139,47 @@ function isMandatory(value: unknown): number {
   return 0;
 }
 
-function readSheet(workbook: any, sheetName: string): AnyRow[] {
-  const sheet = workbook.Sheets[sheetName];
-  if (!sheet) return [];
-  return XLSX.utils.sheet_to_json(sheet, {
-    defval: null,
-    raw: true
-  }) as AnyRow[];
+function normalizeCellValue(value: unknown): unknown {
+  if (value == null) return null;
+  if (value instanceof Date) return value;
+  if (['string', 'number', 'boolean'].includes(typeof value)) return value;
+  return String(value);
+}
+
+async function readWorkbookSheet(filePath: string, sheetName: string): Promise<AnyRow[]> {
+  let sheetRows: unknown[][];
+  try {
+    sheetRows = await readSheet(filePath, sheetName);
+  } catch (error) {
+    if (error instanceof Error && /Sheet .* not found/i.test(error.message)) {
+      return [];
+    }
+    throw error;
+  }
+
+  const [headerRow, ...dataRows] = sheetRows;
+  if (!headerRow) return [];
+
+  const headers = headerRow.map((cell) => toStringValue(normalizeCellValue(cell)));
+  const rows: AnyRow[] = [];
+
+  for (const row of dataRows) {
+    const output: AnyRow = {};
+    let hasValue = false;
+    headers.forEach((header, index) => {
+      if (!header) return;
+      const value = normalizeCellValue(row[index]);
+      output[header] = value;
+      if (value !== null && value !== '') {
+        hasValue = true;
+      }
+    });
+    if (hasValue) {
+      rows.push(output);
+    }
+  }
+
+  return rows;
 }
 
 function ensureCompany(name: string, companyIdsByName: Map<string, string>): string {
@@ -177,18 +214,28 @@ function ensureTechnician(name: string, techIdsByName: Map<string, string>): str
   return id;
 }
 
-export function importWorkbook(filePath: string, options: ImportOptions = {}): ImportSummary {
-  const workbook = XLSX.readFile(filePath, { cellDates: false });
-
-  const journeyRows = readSheet(workbook, 'Jornada_Padrao');
-  const clientsRows = readSheet(workbook, 'Clientes');
-  const progressRows = readSheet(workbook, 'Progresso_do_Cliente');
-  const techRows = readSheet(workbook, 'Tecnicos');
-  const cohortRows = readSheet(workbook, 'Turmas');
-  const cohortModulesRows = readSheet(workbook, 'Turma_Modulos');
-  const allocationRows = readSheet(workbook, 'Alocacao_Turma_Modulo');
-  const optionalRows = readSheet(workbook, 'Modulos_Opcionais');
-  const optionalProgressRows = readSheet(workbook, 'Progresso_Opcionais');
+export async function importWorkbook(filePath: string, options: ImportOptions = {}): Promise<ImportSummary> {
+  const [
+    journeyRows,
+    clientsRows,
+    progressRows,
+    techRows,
+    cohortRows,
+    cohortModulesRows,
+    allocationRows,
+    optionalRows,
+    optionalProgressRows
+  ] = await Promise.all([
+    readWorkbookSheet(filePath, 'Jornada_Padrao'),
+    readWorkbookSheet(filePath, 'Clientes'),
+    readWorkbookSheet(filePath, 'Progresso_do_Cliente'),
+    readWorkbookSheet(filePath, 'Tecnicos'),
+    readWorkbookSheet(filePath, 'Turmas'),
+    readWorkbookSheet(filePath, 'Turma_Modulos'),
+    readWorkbookSheet(filePath, 'Alocacao_Turma_Modulo'),
+    readWorkbookSheet(filePath, 'Modulos_Opcionais'),
+    readWorkbookSheet(filePath, 'Progresso_Opcionais')
+  ]);
 
   const summary: ImportSummary = {
     file_path: filePath,

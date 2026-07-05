@@ -132,7 +132,7 @@ export function AdminPage() {
   const [moduleQuery, setModuleQuery] = useState('');
   const [sortKey, setSortKey] = useState<AdminModuleSortKey>('code');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [filePath, setFilePath] = useState('/Users/yohannreimer/Downloads/Planejamento_Jornada_Treinamentos_v3.xlsx');
+  const [filePath, setFilePath] = useState('/app/apps/backend/data/import.xlsx');
   const [resetData, setResetData] = useState(false);
   const [message, setMessage] = useState('');
   const [loadingImport, setLoadingImport] = useState(false);

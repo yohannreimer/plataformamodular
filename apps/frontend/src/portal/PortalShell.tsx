@@ -49,10 +49,15 @@ export function PortalShell() {
     setProfile(null);
   }, [slug]);
 
+  const handleLogout = useCallback(() => {
+    const currentToken = session?.token;
+    void portalApi.logout(currentToken).catch(() => undefined).finally(clearSession);
+  }, [clearSession, session?.token]);
+
   const apiClient = useMemo(() => {
-    if (!session?.token) return null;
+    if (!session) return null;
     return portalApi.createAuthedClient(session.token, clearSession);
-  }, [session?.token, clearSession]);
+  }, [session, clearSession]);
 
   useEffect(() => {
     if (!apiClient) return;
@@ -79,7 +84,7 @@ export function PortalShell() {
     });
     const nextSession = { token: result.token, expires_at: result.expires_at, is_internal: result.is_internal };
     portalSessionStore.save(slug, nextSession);
-    setSession(nextSession);
+    setSession({ expires_at: result.expires_at, is_internal: result.is_internal });
     setAuthError('');
     return true;
   }
@@ -125,7 +130,7 @@ export function PortalShell() {
           <small>
             {profile?.company_name || 'Sessão ativa'}
           </small>
-          <button type="button" className="portal-logout-btn" onClick={clearSession}>Sair</button>
+          <button type="button" className="portal-logout-btn" onClick={handleLogout}>Sair</button>
         </div>
       </aside>
       <main className="portal-main">
@@ -143,7 +148,7 @@ export function PortalShell() {
           <Route index element={<Navigate to="agenda" replace />} />
           <Route path="planejamento" element={<PortalPlanningPage api={apiClient} isInternal={Boolean(profile?.is_internal)} />} />
           <Route path="agenda" element={<PortalAgendaPage api={apiClient} isInternal={Boolean(profile?.is_internal)} />} />
-          <Route path="certificados" element={<PortalCertificatesPage api={apiClient} sessionToken={session.token} />} />
+          <Route path="certificados" element={<PortalCertificatesPage api={apiClient} sessionToken={session.token ?? ''} />} />
           <Route path="certificados/:certificateId/avaliacao" element={<PortalCertificateEvaluationPage api={apiClient} />} />
           <Route
             path="suporte"

@@ -43,6 +43,7 @@ async function portalReq<T>(
     response = await fetch(`${BASE_URL}${path}`, {
       ...init,
       headers,
+      credentials: 'include',
       signal: controller.signal
     });
   } catch (error) {
@@ -86,7 +87,9 @@ export const portalApi = {
       method: 'POST',
       body: JSON.stringify(payload)
     }),
-  createAuthedClient: (token: string, onUnauthorized?: () => void): PortalAuthedApi => ({
+  logout: (token?: string) =>
+    portalReq<{ ok: boolean }>('/portal/api/auth/logout', { method: 'POST' }, { token }),
+  createAuthedClient: (token?: string, onUnauthorized?: () => void): PortalAuthedApi => ({
     me: () => portalReq<PortalMe>('/portal/api/me', {}, { token, onUnauthorized }),
     overview: () => portalReq<PortalOverview>('/portal/api/overview', {}, { token, onUnauthorized }),
     planning: () => portalReq<{ items: PortalPlanningItem[]; hours_summary?: PortalHoursSummary | null }>(

@@ -9,7 +9,12 @@ services:
       APP_DB_PATH: /app/apps/backend/data/app.db
       SEED_FINANCE_DEMO: "false"
       PRYMEIRA_ACCOUNT_API_URL: https://hub.prymeiradigital.com.br/api
-      PRYMEIRA_BOOTSTRAP_ADMIN_EMAILS: ${PRYMEIRA_BOOTSTRAP_ADMIN_EMAILS:-yohannreimer20@gmail.com}
+      PRYMEIRA_BOOTSTRAP_ADMIN_EMAILS: ${PRYMEIRA_BOOTSTRAP_ADMIN_EMAILS:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://fluvia.prymeiradigital.com.br,https://velio.prymeiradigital.com.br}
+      INTERNAL_LOGIN_RATE_LIMIT_ATTEMPTS: ${INTERNAL_LOGIN_RATE_LIMIT_ATTEMPTS:-8}
+      INTERNAL_LOGIN_RATE_LIMIT_WINDOW_MS: ${INTERNAL_LOGIN_RATE_LIMIT_WINDOW_MS:-60000}
+      INTERNAL_LOGIN_RATE_LIMIT_BLOCK_MS: ${INTERNAL_LOGIN_RATE_LIMIT_BLOCK_MS:-300000}
+      ADMIN_WORKBOOK_IMPORT_PATH: ${ADMIN_WORKBOOK_IMPORT_PATH:-/app/apps/backend/data/import.xlsx}
     networks:
       plataforma_modular_internal:
         aliases:

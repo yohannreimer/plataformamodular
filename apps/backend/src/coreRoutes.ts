@@ -41,6 +41,14 @@ import {
 import { readAccountProducts, syncAccountCustomer } from './account/client.js';
 import { extractClerkToken, requireAccountProductAccess } from './account/productAccess.js';
 import { findOrCreateOrganizationForAccountWorkspace } from './account/workspaceMapping.js';
+import {
+  clearInternalLoginFailures,
+  clearSessionCookie,
+  INTERNAL_SESSION_COOKIE_NAME,
+  isInternalLoginRateLimited,
+  recordInternalLoginFailure,
+  setSessionCookie
+} from './security.js';
 
 const INSTALLATION_CODES = ['960001010', 'MOD-01'] as const;
 const DEFAULT_WORKBOOK_PATH = '/Users/yohannreimer/Downloads/Planejamento_Jornada_Treinamentos_v3.xlsx';
@@ -108,6 +116,29 @@ const INTERNAL_AUDIT_IGNORED_PATH_PATTERNS = [
   /^\/implementation\/kanban\/cards\/[^/]+\/conversation\/read$/,
   /^\/implementation\/kanban\/cards\/[^/]+\/conversation\/messages$/
 ];
+
+function parseCsvEnv(value: string | undefined): string[] {
+  return (value ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function allowedWorkbookImportPaths() {
+  return [
+    process.env.ADMIN_WORKBOOK_IMPORT_PATH,
+    ...parseCsvEnv(process.env.ADMIN_WORKBOOK_IMPORT_ALLOWED_PATHS)
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .map((value) => path.resolve(value));
+}
+
+function canImportServerWorkbookPath(absolutePath: string) {
+  if (process.env.NODE_ENV !== 'production') {
+    return true;
+  }
+  return allowedWorkbookImportPaths().includes(absolutePath);
+}
 
 type RegisterCoreRoutesOptions = {
   enforceInternalAuth?: boolean;
@@ -597,7 +628,7 @@ async function renderPdfFromHtml(html: string): Promise<Buffer> {
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1400, height: 1000, deviceScaleFactor: 2 });
-    await page.setContent(html, { waitUntil: 'networkidle0' });
+    await page.setContent(html, { waitUntil: 'load' });
     await page.emulateMediaType('screen');
     await page.evaluate(async () => {
       const fontsReady = (document as any)?.fonts?.ready;
@@ -3202,14 +3233,26 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
       return res.status(400).json(parsed.error.flatten());
     }
 
+    const username = parsed.data.username.trim();
+    if (isInternalLoginRateLimited(req, username)) {
+      return res.status(429).json({
+        message: 'Muitas tentativas de login. Tente novamente em alguns minutos.',
+        reason: 'rate_limited'
+      });
+    }
+
     const session = createInternalSessionForCredentials(
-      parsed.data.username.trim(),
+      username,
       parsed.data.password
     );
 
     if (!session) {
+      recordInternalLoginFailure(req, username);
       return res.status(401).json({ message: 'Usuário ou senha inválidos.' });
     }
+
+    clearInternalLoginFailures(req, username);
+    setSessionCookie(res, INTERNAL_SESSION_COOKIE_NAME, session.token, session.expires_at);
 
     return res.json({
       token: session.token,
@@ -3237,17 +3280,24 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
       return res.status(400).json(parsed.error.flatten());
     }
 
-    const email = parsed.data.email.trim().toLowerCase();
-    const displayName = parsed.data.name?.trim() || email;
-
     try {
-      await syncAccountCustomer(clerkToken, {
+      const syncedCustomer = await syncAccountCustomer(clerkToken, {
         clerk_user_id: parsed.data.clerk_user_id,
-        email,
-        name: displayName
+        email: parsed.data.email.trim().toLowerCase(),
+        name: parsed.data.name?.trim() || parsed.data.email.trim().toLowerCase()
       });
 
       const accountProducts = await readAccountProducts(clerkToken);
+      const customerEmail = accountProducts.customer?.email ?? syncedCustomer.email;
+      const email = customerEmail.trim().toLowerCase();
+      const displayName = accountProducts.customer?.name?.trim() || parsed.data.name?.trim() || email;
+      if (accountProducts.customer?.email && accountProducts.customer.email.trim().toLowerCase() !== syncedCustomer.email.trim().toLowerCase()) {
+        return res.status(502).json({
+          message: 'Identidade inconsistente retornada pela Prymeira Account.',
+          reason: 'account_identity_mismatch'
+        });
+      }
+
       const accountWorkspace = accountProducts.workspace;
       if (!accountWorkspace) {
         return res.status(403).json({
@@ -3302,15 +3352,17 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
           reason: 'internal_session_failed'
         });
       }
+      setSessionCookie(res, INTERNAL_SESSION_COOKIE_NAME, session.token, session.expires_at);
 
       return res.json({
         session: toInternalSessionResponse(session),
         account: accountProducts
       });
     } catch (error) {
+      console.error('[account-bootstrap] sync failed:', errorMessage(error));
       return res.status(502).json({
         message: 'Não foi possível sincronizar com a Prymeira Account.',
-        detail: errorMessage(error)
+        reason: 'account_sync_failed'
       });
     }
   });
@@ -3338,6 +3390,7 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
     if (token) {
       logoutInternalSessionByToken(token);
     }
+    clearSessionCookie(res, INTERNAL_SESSION_COOKIE_NAME);
     return res.json({ ok: true });
   });
 
@@ -9857,7 +9910,7 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
     }
   });
   
-  app.post('/admin/import-workbook', (req, res) => {
+  app.post('/admin/import-workbook', async (req, res) => {
     const schema = z.object({
       file_path: z.string().optional(),
       reset_data: z.boolean().optional(),
@@ -9869,10 +9922,16 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
       return res.status(400).json(parsed.error.flatten());
     }
   
-    const filePath = parsed.data.file_path ?? DEFAULT_WORKBOOK_PATH;
+    const filePath = parsed.data.file_path ?? process.env.ADMIN_WORKBOOK_IMPORT_PATH ?? DEFAULT_WORKBOOK_PATH;
     const absolutePath = path.resolve(filePath);
+    if (!canImportServerWorkbookPath(absolutePath)) {
+      return res.status(400).json({
+        message: 'Importação por caminho de arquivo do servidor não permitida neste ambiente.',
+        reason: 'server_file_path_not_allowed'
+      });
+    }
     if (!fs.existsSync(absolutePath)) {
-      return res.status(404).json({ message: 'Arquivo nao encontrado', file_path: absolutePath });
+      return res.status(404).json({ message: 'Arquivo nao encontrado' });
     }
     const shouldResetData = parsed.data.reset_data ?? false;
     if (shouldResetData && !hasDestructiveConfirmation(parsed.data.confirmation_phrase)) {
@@ -9882,7 +9941,7 @@ export function registerCoreRoutes(app: Express, options: RegisterCoreRoutesOpti
     }
   
     try {
-      const summary = importWorkbook(absolutePath, { resetData: shouldResetData });
+      const summary = await importWorkbook(absolutePath, { resetData: shouldResetData });
       return res.json({ ok: true, summary });
     } catch (error) {
       return res.status(500).json({ message: 'Falha ao importar planilha', detail: errorMessage(error) });

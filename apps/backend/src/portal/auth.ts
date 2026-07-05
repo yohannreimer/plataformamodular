@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import type { NextFunction, Request, Response } from 'express';
 import { db, uuid } from '../db.js';
 import type { PortalAuthContext } from './types.js';
+import { PORTAL_SESSION_COOKIE_NAME, readCookie } from '../security.js';
 
 const scryptAsync = promisify(scrypt);
 const PASSWORD_HASH_PREFIX = 'scrypt';
@@ -182,6 +183,15 @@ export function readPortalSessionByToken(token: string): PortalSessionContext | 
   };
 }
 
+export function deletePortalSessionByToken(token: string): void {
+  const tokenHash = hashSessionToken(token);
+  db.prepare('delete from portal_session where token_hash = ?').run(tokenHash);
+}
+
+export function extractPortalAuthToken(req: Request): string | null {
+  return extractBearerToken(req.header('authorization')) ?? readCookie(req, PORTAL_SESSION_COOKIE_NAME);
+}
+
 function extractBearerToken(authorizationHeader: string | undefined): string | null {
   if (!authorizationHeader) return null;
   const match = authorizationHeader.match(/^Bearer\s+(.+)$/i);
@@ -192,7 +202,7 @@ function extractBearerToken(authorizationHeader: string | undefined): string | n
 }
 
 export function requirePortalAuth(req: Request, res: Response, next: NextFunction) {
-  const token = extractBearerToken(req.header('authorization'));
+  const token = extractPortalAuthToken(req);
   if (!token) {
     return res.status(401).json({ message: 'Token de autenticação obrigatório.' });
   }

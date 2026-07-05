@@ -5,11 +5,14 @@ import { db, uuid } from '../db.js';
 import { readCompanyHoursModuleInsights } from '../hours/reconcile.js';
 import {
   createPortalSession,
+  deletePortalSessionByToken,
+  extractPortalAuthToken,
   findPortalUserBySlugAndUsername,
   readPortalAuthContext,
   requirePortalAuth,
   verifyPassword
 } from './auth.js';
+import { clearSessionCookie, PORTAL_SESSION_COOKIE_NAME, setSessionCookie } from '../security.js';
 import { portalRealtimeHub } from './realtime.js';
 import { readPortalRealtimeSnapshot, setPortalTypingState, touchPortalPresence } from './realtimeState.js';
 import { toClientFacingStatus, toWorkflowStage } from './status.js';
@@ -1992,6 +1995,7 @@ export function registerPortalRoutes(app: Express) {
           username: INTERNAL_PORTAL_USER_USERNAME
         }, { isInternal: true });
         clearLoginAttempts(throttleKey);
+        setSessionCookie(res, PORTAL_SESSION_COOKIE_NAME, session.token, session.expires_at);
         return res.status(200).json(session);
       }
 
@@ -2016,11 +2020,21 @@ export function registerPortalRoutes(app: Express) {
         username: portalUser.username
       }, { isInternal: false });
       clearLoginAttempts(throttleKey);
+      setSessionCookie(res, PORTAL_SESSION_COOKIE_NAME, session.token, session.expires_at);
 
       return res.status(200).json(session);
     } catch (error) {
       return next(error);
     }
+  });
+
+  router.post('/auth/logout', requirePortalAuth, (req, res) => {
+    const token = extractPortalAuthToken(req);
+    if (token) {
+      deletePortalSessionByToken(token);
+    }
+    clearSessionCookie(res, PORTAL_SESSION_COOKIE_NAME);
+    return res.status(200).json({ ok: true });
   });
 
   router.get('/me', requirePortalAuth, (_req, res) => {

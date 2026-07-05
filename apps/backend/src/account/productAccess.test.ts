@@ -38,3 +38,22 @@ test('account product access allows protected app routes when Account API allows
     globalThis.fetch = originalFetch;
   }
 });
+
+test('account product access hides upstream error details from clients', async () => {
+  assignTestDbPath('account-product-upstream-error');
+  const app = createApp({ forceDbRefresh: true, enforceAccountProductAccess: true });
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () => {
+    throw new Error('secret upstream stack with token abc');
+  };
+
+  try {
+    const res = await request(app).get('/dashboard').set('X-Clerk-Token', 'test-clerk-token');
+    assert.equal(res.status, 502);
+    assert.equal(res.body.message, 'Não foi possível validar acesso na Prymeira Account.');
+    assert.equal('detail' in res.body, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

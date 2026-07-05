@@ -16,7 +16,7 @@ export type PortalAuthBranding = {
 };
 
 export type PortalSessionData = {
-  token: string;
+  token?: string;
   expires_at: string;
   is_internal?: boolean;
 };

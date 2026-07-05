@@ -2,6 +2,7 @@ import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypt
 import type { NextFunction, Request, Response } from 'express';
 import { db, uuid } from './db.js';
 import { isLocalDevAuthBypassEnabled } from './localDevAuth.js';
+import { INTERNAL_SESSION_COOKIE_NAME, readCookie } from './security.js';
 
 export const INTERNAL_ROLE_VALUES = ['supremo', 'intermediario', 'junior', 'custom'] as const;
 export type InternalRole = (typeof INTERNAL_ROLE_VALUES)[number];
@@ -840,7 +841,7 @@ function readBearerToken(authorizationHeader: string | undefined): string | null
 }
 
 export function extractInternalBearerToken(req: Request): string | null {
-  return readBearerToken(req.header('authorization'));
+  return readBearerToken(req.header('authorization')) ?? readCookie(req, INTERNAL_SESSION_COOKIE_NAME);
 }
 
 function buildLocalDevAuthContext(): InternalAuthContext {

@@ -37,7 +37,7 @@ export type InternalSessionUser = {
 };
 
 export type InternalSessionData = {
-  token: string;
+  token?: string;
   expires_at: string;
   user: InternalSessionUser;
 };
@@ -90,13 +90,13 @@ function normalizeUser(raw: unknown): InternalSessionUser | null {
 function normalizeSession(raw: unknown): InternalSessionData | null {
   if (!raw || typeof raw !== 'object') return null;
   const source = raw as Record<string, unknown>;
-  const token = typeof source.token === 'string' ? source.token : '';
+  const token = typeof source.token === 'string' ? source.token : undefined;
   const expiresAt = typeof source.expires_at === 'string' ? source.expires_at : '';
   const user = normalizeUser(source.user);
-  if (!token || !expiresAt || !user) return null;
+  if (!expiresAt || !user) return null;
 
   return {
-    token,
+    ...(token ? { token } : {}),
     expires_at: expiresAt,
     user
   };
@@ -117,7 +117,8 @@ export const internalSessionStore = {
     }
   },
   save(session: InternalSessionData) {
-    window.localStorage.setItem(INTERNAL_AUTH_STORAGE_KEY, JSON.stringify(session));
+    const { token: _token, ...persistableSession } = session;
+    window.localStorage.setItem(INTERNAL_AUTH_STORAGE_KEY, JSON.stringify(persistableSession));
     emitInternalAuthChanged();
   },
   clear() {

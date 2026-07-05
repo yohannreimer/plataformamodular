@@ -278,19 +278,18 @@ function resolveRealtimeApiBase(rawBaseUrl: string) {
   };
 }
 
-function makePortalWsUrls(sessionToken: string) {
+function makePortalWsUrls() {
   const base = resolveRealtimeApiBase(API_BASE_URL);
   const protocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
-  const tokenParam = `token=${encodeURIComponent(sessionToken)}`;
   const candidates: string[] = [];
   if (window.location.port === '5173') {
-    candidates.push(`${protocol}//${window.location.hostname}:4000/portal/ws?${tokenParam}`);
-    candidates.push(`${protocol}//${window.location.hostname}:4010/portal/ws?${tokenParam}`);
+    candidates.push(`${protocol}//${window.location.hostname}:4000/portal/ws`);
+    candidates.push(`${protocol}//${window.location.hostname}:4010/portal/ws`);
   }
   if (base.pathPrefix) {
-    candidates.push(`${protocol}//${base.host}${base.pathPrefix}/portal/ws?${tokenParam}`);
+    candidates.push(`${protocol}//${base.host}${base.pathPrefix}/portal/ws`);
   }
-  candidates.push(`${protocol}//${base.host}/portal/ws?${tokenParam}`);
+  candidates.push(`${protocol}//${base.host}/portal/ws`);
   return Array.from(new Set(candidates));
 }
 
@@ -807,7 +806,10 @@ export function ImplementationPage({ boardMode = 'implementation' }: Implementat
     let pingTimer: number | null = null;
     let bootTimer: number | null = null;
     let wsCandidateIndex = 0;
-    const wsUrls = makePortalWsUrls(conversationRealtimeToken);
+    const wsUrls = makePortalWsUrls();
+    const protocols = conversationRealtimeToken
+      ? ['portal.session', `portal-token.${conversationRealtimeToken}`]
+      : undefined;
 
     const clearReconnectTimer = () => {
       if (conversationReconnectTimerRef.current) {
@@ -842,7 +844,7 @@ export function ImplementationPage({ boardMode = 'implementation' }: Implementat
       try {
         const targetUrl = wsUrls[wsCandidateIndex % wsUrls.length] ?? wsUrls[0];
         wsCandidateIndex += 1;
-        nextSocket = new WebSocket(targetUrl);
+        nextSocket = protocols ? new WebSocket(targetUrl, protocols) : new WebSocket(targetUrl);
       } catch {
         scheduleReconnect();
         return;

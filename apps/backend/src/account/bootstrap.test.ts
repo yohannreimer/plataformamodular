@@ -129,6 +129,47 @@ test('account bootstrap creates bootstrap-admin users in the Account workspace o
   }
 });
 
+test('account bootstrap uses Account API identity instead of trusting browser payload identity', async () => {
+  const previousFetch = globalThis.fetch;
+  const previousBootstrapAdmins = process.env.PRYMEIRA_BOOTSTRAP_ADMIN_EMAILS;
+  const dbPath = assignTestDbPath('account-bootstrap-hub-identity');
+  cleanupDbFiles(dbPath);
+  process.env.PRYMEIRA_BOOTSTRAP_ADMIN_EMAILS = 'user@example.com';
+  globalThis.fetch = mockAccountFetch({
+    id: 'workspace-hub-identity',
+    name: 'Hub Identity Co',
+    type: 'company',
+    role: 'owner'
+  });
+
+  try {
+    const app = createApp({ forceDbRefresh: true });
+    const res = await request(app)
+      .post('/auth/account/bootstrap')
+      .set('X-Clerk-Token', 'clerk-token')
+      .send({
+        clerk_user_id: 'attacker-clerk',
+        email: 'attacker@example.com',
+        name: 'Attacker'
+      });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.session.user.username, 'user@example.com');
+    const attackerUser = db.prepare(`
+      select id from internal_user where username = ?
+    `).get('attacker@example.com');
+    assert.equal(attackerUser, undefined);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousBootstrapAdmins === undefined) {
+      delete process.env.PRYMEIRA_BOOTSTRAP_ADMIN_EMAILS;
+    } else {
+      process.env.PRYMEIRA_BOOTSTRAP_ADMIN_EMAILS = previousBootstrapAdmins;
+    }
+    cleanupDbFiles(dbPath);
+  }
+});
+
 test('account bootstrap realigns existing internal users to the Account workspace organization', async () => {
   const previousFetch = globalThis.fetch;
   const previousBootstrapAdmins = process.env.PRYMEIRA_BOOTSTRAP_ADMIN_EMAILS;

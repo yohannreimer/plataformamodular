@@ -69,10 +69,12 @@ export async function requireAccountProductAccess(req: Request, res: Response, n
       upgrade_url: decision.upgrade_url
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[account-product-access] validation failed:', message);
     return res.status(502).json({
       message: 'Não foi possível validar acesso na Prymeira Account.',
       product_key: productKey,
-      detail: error instanceof Error ? error.message : String(error)
+      reason: 'account_validation_failed'
     });
   }
 }
